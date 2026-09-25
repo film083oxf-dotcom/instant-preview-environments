@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "instant-preview-environments",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-24",
+  "workers_dev": true,
+  "preview_urls": true,
+
+  "vars": {
+    "APP_NAME": "Instant On-Demand Preview Environments",
+    "ENVIRONMENT": "production"
+  },
+
+  "previews": {
+    "vars": {
+      "APP_NAME": "Instant On-Demand Preview Environments",
+      "ENVIRONMENT": "preview"
+    }
+  }
+}
