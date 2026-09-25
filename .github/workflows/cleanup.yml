@@ -26,7 +26,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          # No npm cache: repository has no lockfile yet.
 
       - name: Install dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
