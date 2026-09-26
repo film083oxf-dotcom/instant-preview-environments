@@ -1,0 +1,29 @@
+name: Validate
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Syntax and config validation
+        run: |
+          set -euo pipefail
+          node --check src/index.js
+          node --check src/auth.js
+          node --check src/preview-auth.js
+          node --check scripts/ai-diagnose.mjs
+          node --check scripts/generate-preview-config.mjs
+          node --check scripts/generate-production-config.mjs
+          node -e "JSON.parse(require('fs').readFileSync('wrangler.jsonc','utf8'));"
+          node scripts/generate-preview-config.mjs dummy-db-id instant-preview-pr-999 pr-999 dummy-control-id instant-preview-control-plane
+          node -e "JSON.parse(require('fs').readFileSync('wrangler.preview.generated.jsonc','utf8'));"
+          node scripts/generate-production-config.mjs dummy-control-id instant-preview-control-plane dummy-client-id
+          node -e "JSON.parse(require('fs').readFileSync('wrangler.production.generated.jsonc','utf8'));"
+          rm -f wrangler.preview.generated.jsonc wrangler.production.generated.jsonc
