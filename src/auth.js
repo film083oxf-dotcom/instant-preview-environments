@@ -392,8 +392,6 @@ export async function getSession(request, signingKey) {
   } catch {
     return null;
   }
-
-  }
 }
 
 async function createSession(user, signingKey) {
