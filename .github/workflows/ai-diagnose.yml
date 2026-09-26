@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CONTROL_DB_NAME: instant-preview-control-plane
+      PROJECT_ID: instant-preview-environments
 
     steps:
       - name: Checkout diagnosis script
@@ -91,7 +92,7 @@ jobs:
           AI_STATUS: ${{ steps.diagnose.outcome == 'success' && 'DIAGNOSED' || 'UNAVAILABLE' }}
         run: |
           set +e
-          node scripts/write-control-state.mjs /tmp/control-state.sql ai ${{ steps.pr.outputs.number }} "$AI_STATUS"
+          node scripts/write-control-state.mjs /tmp/control-state.sql ai "$PROJECT_ID" ${{ steps.pr.outputs.number }} "$AI_STATUS"
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
       - name: Comment diagnosis
