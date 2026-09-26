@@ -140,26 +140,22 @@ jobs:
             cleanup_failed="false"
 
             echo "=== Delete Preview: pr-$pr ==="
-            if preview_output="$(npx --yes wrangler@4.136.3 preview delete --name "pr-$pr" --skip-confirmation 2>&1)"; then
-              preview_status=0
+            if preview_output="$(node scripts/provider-cli.mjs delete-preview --name "pr-$pr")"; then
+              printf '%s
+' "$preview_output"
             else
-              preview_status=$?
-            fi
-            printf '%s\n' "$preview_output"
-
-            if [ "$preview_status" -ne 0 ] && ! grep -Fq "Preview not found. [code: 10025]" <<< "$preview_output"; then
+              printf '%s
+' "$preview_output"
               cleanup_failed="true"
             fi
 
             echo "=== Delete isolated D1: $database_name ==="
-            if db_output="$(npx --yes wrangler@4.136.3 d1 delete "$database_name" --skip-confirmation 2>&1)"; then
-              db_status=0
+            if db_output="$(node scripts/provider-cli.mjs delete-db --name "$database_name")"; then
+              printf '%s
+' "$db_output"
             else
-              db_status=$?
-            fi
-            printf '%s\n' "$db_output"
-
-            if [ "$db_status" -ne 0 ] && ! grep -Eiq "not found|does not exist|No database|could not find|Couldn't find a D1 DB|Couldn't find.*D1" <<< "$db_output"; then
+              printf '%s
+' "$db_output"
               cleanup_failed="true"
             fi
 
