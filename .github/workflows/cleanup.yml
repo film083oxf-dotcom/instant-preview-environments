@@ -14,6 +14,7 @@ jobs:
 
     env:
       PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
+      PREVIEW_DB_NAME: instant-preview-pr-${{ github.event.pull_request.number }}
 
     steps:
       - name: Checkout default branch config
@@ -26,25 +27,40 @@ jobs:
         with:
           node-version: 22
 
-      - name: Delete Preview
+      - name: Delete Preview and isolated D1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set +e
 
-          output=$(npx --yes wrangler@4.136.3 preview delete --name "$PREVIEW_NAME" --skip-confirmation 2>&1)
-          status=$?
+          echo "=== Delete Preview: $PREVIEW_NAME ==="
+          preview_output=$(npx --yes wrangler@4.136.3 preview delete --name "$PREVIEW_NAME" --skip-confirmation 2>&1)
+          preview_status=$?
+          printf '%s\n' "$preview_output"
 
-          printf '%s\n' "$output"
-
-          if [ "$status" -eq 0 ]; then
-            exit 0
+          if [ "$preview_status" -ne 0 ] && ! grep -Fq "Preview not found. [code: 10025]" <<< "$preview_output"; then
+            echo "Preview deletion failed."
+            exit "$preview_status"
           fi
 
-          if grep -Fq "Preview not found. [code: 10025]" <<< "$output"; then
-            echo "Preview $PREVIEW_NAME does not exist. Nothing to clean up."
-            exit 0
+          if grep -Fq "Preview not found. [code: 10025]" <<< "$preview_output"; then
+            echo "Preview $PREVIEW_NAME does not exist. Nothing to delete."
           fi
 
-          exit "$status"
+          echo "=== Delete isolated D1: $PREVIEW_DB_NAME ==="
+          db_output=$(npx --yes wrangler@4.136.3 d1 delete "$PREVIEW_DB_NAME" --skip-confirmation 2>&1)
+          db_status=$?
+          printf '%s\n' "$db_output"
+
+          if [ "$db_status" -ne 0 ]; then
+            if grep -Eiq "not found|does not exist|No database|could not find" <<< "$db_output"; then
+              echo "D1 $PREVIEW_DB_NAME does not exist. Nothing to delete."
+              exit 0
+            fi
+
+            echo "D1 deletion failed."
+            exit "$db_status"
+          fi
+
+          echo "Cleanup completed for $PREVIEW_NAME and $PREVIEW_DB_NAME."
