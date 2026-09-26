@@ -1,6 +1,27 @@
+import { getDashboardData, renderDashboard } from "./dashboard.js";
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/environments") {
+      try {
+        const data = await getDashboardData(env);
+        return Response.json(data, {
+          headers: {
+            "Cache-Control": "public, max-age=15, s-maxage=15"
+          }
+        });
+      } catch (error) {
+        return Response.json({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error)
+        }, {
+          status: 502,
+          headers: { "Cache-Control": "no-store" }
+        });
+      }
+    }
 
     if (url.pathname === "/health") {
       return Response.json({
@@ -50,6 +71,33 @@ export default {
         headers: { "Cache-Control": "no-store" }
       });
     }
+
+    if (url.pathname === "/" && env.ENVIRONMENT === "production") {
+      try {
+        const data = await getDashboardData(env);
+        return new Response(renderDashboard(data), {
+          headers: {
+            "content-type": "text/html; charset=UTF-8",
+            "cache-control": "public, max-age=15, s-maxage=15",
+            "x-robots-tag": "noindex"
+          }
+        });
+      } catch (error) {
+        return new Response(
+          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Dashboard Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Dashboard temporarily unavailable</h1><p>GitHub API could not be read right now.</p><pre>" +
+          escapeHtml(error instanceof Error ? error.message : String(error)) +
+          "</pre></body></html>",
+          {
+            status: 502,
+            headers: {
+              "content-type": "text/html; charset=UTF-8",
+              "cache-control": "no-store"
+            }
+          }
+        );
+      }
+    }
+
     const title = env.ENVIRONMENT === "preview"
       ? "Preview Environment Ready"
       : "Production Environment";
