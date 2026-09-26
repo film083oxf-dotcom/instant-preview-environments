@@ -84,7 +84,7 @@ export default {
         });
       } catch (error) {
         return new Response(
-          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Dashboard Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Dashboard temporarily unavailable</h1><p>GitHub API could not be read right now.</p><pre>" +
+          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Dashboard Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Dashboard temporarily unavailable</h1><p>Control-plane data could not be read right now.</p><pre>" +
           escapeHtml(error instanceof Error ? error.message : String(error)) +
           "</pre></body></html>",
           {
@@ -126,7 +126,7 @@ export default {
   <main class="card">
     <span class="badge">${escapeHtml(env.ENVIRONMENT)}</span>
     <h1>${escapeHtml(title)}</h1>
-    <p>นี่คือ MVP ของระบบที่สร้าง Preview Environment แยกให้แต่ละ Pull Request แบบอัตโนมัติ</p>
+    <p>นี่คือ MVP ของระบบที่สร้าง Preview Environment แยกให้แต่ละ Pull Request แบบอัตโนมัติ (Live TTL GC Test)</p>
     <div class="grid">
       <div class="item"><div class="label">Application</div><div class="value">${escapeHtml(env.APP_NAME)}</div></div>
       <div class="item"><div class="label">Environment</div><div class="value">${escapeHtml(env.ENVIRONMENT)}</div></div>
