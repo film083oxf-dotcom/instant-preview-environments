@@ -5,9 +5,24 @@ const STATE_TTL_SECONDS = 60 * 10;
 const TICKET_TTL_SECONDS = 60 * 5;
 
 export async function handleAuthLogin(request, env) {
+  const currentUrl = new URL(request.url);
+
+  if (env.ENVIRONMENT === "preview") {
+    const productionLogin = new URL("/auth/login", env.AUTH_BASE_URL);
+    productionLogin.searchParams.set("return_to", currentUrl.toString());
+
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: productionLogin.toString(),
+        "Cache-Control": "no-store"
+      }
+    });
+  }
+
   assertAuthConfig(env);
 
-  const requestedReturnTo = new URL(request.url).searchParams.get("return_to");
+  const requestedReturnTo = currentUrl.searchParams.get("return_to");
   const returnTo = sanitizeReturnTo(requestedReturnTo, env);
   const state = randomToken(32);
   const verifier = randomToken(32);
