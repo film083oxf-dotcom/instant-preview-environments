@@ -6,3 +6,5 @@ preview-output.json
 logs/
 ai-diagnosis.txt
 \nwrangler.preview.generated.jsonc\n
+wrangler.production.generated.jsonc
+/tmp/control-state.sql
