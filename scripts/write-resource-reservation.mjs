@@ -124,13 +124,11 @@ WHERE
     FROM project_quotas
     WHERE project_id = ${projectSql}
   );
-
-SELECT changes() AS reserved;`;
+`;
 } else if (mode === "release") {
   sql = `DELETE FROM project_resource_reservations
 WHERE project_id = ${projectSql} AND pr_number = ${pr};
-
-SELECT changes() AS released;`;
+`;
 } else {
   throw new Error("Mode must be reserve or release.");
 }
