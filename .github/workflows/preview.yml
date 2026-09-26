@@ -54,7 +54,9 @@ jobs:
           if [ -z "$db_id" ]; then
             echo "D1 database $PREVIEW_DB_NAME does not exist. Creating it..."
 
-            create_response="$(curl -sS -X POST "$api" "${headers[@]}"               --data "{"name":"$PREVIEW_DB_NAME","mode":"disabled"}")"
+            create_payload="$(jq -nc --arg name "$PREVIEW_DB_NAME" '{name:$name}')"
+            create_response="$(curl -sS -X POST "$api" "${headers[@]}" \
+              --data "$create_payload")"
 
             if ! jq -e '.success == true' >/dev/null <<<"$create_response"; then
               echo "Cloudflare D1 create request failed:"
