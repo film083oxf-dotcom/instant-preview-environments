@@ -1,7 +1,7 @@
 import { getDashboardData, renderDashboard } from "./dashboard.js";
 import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requireAuthorized } from "./auth.js";
 import { requirePreviewAccess } from "./preview-auth.js";
-import { listMemberships, grantMembership, revokeMembership } from "./access-control.js";
+import { listMemberships, listProjectMemberships, grantMembership, revokeMembership, grantProjectMembership, revokeProjectMembership } from "./access-control.js";
 import { renderAccessPage, redirectBack } from "./access-page.js";
 
 export default {
@@ -41,7 +41,10 @@ export default {
       return Response.json({
         ok: true,
         user: authorization.session,
-        access: authorization.membership
+        access: {
+          platform: authorization.membership,
+          project: authorization.projectMembership || null
+        }
       }, {
         headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" }
       });
@@ -55,11 +58,16 @@ export default {
         );
       }
 
-      const memberships = await listMemberships(env.CONTROL_DB);
+      const [memberships, projectMemberships] = await Promise.all([
+        listMemberships(env.CONTROL_DB),
+        listProjectMemberships(env.CONTROL_DB, env.GITHUB_REPO)
+      ]);
+
       return new Response(renderAccessPage({
         repository: env.GITHUB_REPO,
         user: { ...authorization.session, role: authorization.membership.role },
-        memberships
+        memberships,
+        projectMemberships
       }), {
         headers: {
           "content-type": "text/html; charset=UTF-8",
@@ -123,6 +131,72 @@ export default {
         await revokeMembership(
           env.CONTROL_DB,
           { ...authorization.session, role: authorization.membership.role },
+          form.get("github_id")
+        );
+        return redirectBack(new URL("/access", env.AUTH_BASE_URL).toString(), null);
+      } catch (error) {
+        return redirectBack(
+          new URL("/access", env.AUTH_BASE_URL).toString(),
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+
+    if (url.pathname === "/api/access/project-grant" && request.method === "POST") {
+      if (env.ENVIRONMENT !== "production" || authorization.membership.role !== "admin") {
+        return Response.json(
+          { ok: false, error: "Admin access required." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      const origin = request.headers.get("Origin");
+      if (origin && origin !== new URL(env.AUTH_BASE_URL).origin) {
+        return Response.json(
+          { ok: false, error: "Invalid request origin." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      try {
+        const form = await request.formData();
+        await grantProjectMembership(
+          env.CONTROL_DB,
+          { ...authorization.session, role: authorization.membership.role },
+          env.GITHUB_REPO,
+          form.get("login")
+        );
+        return redirectBack(new URL("/access", env.AUTH_BASE_URL).toString(), null);
+      } catch (error) {
+        return redirectBack(
+          new URL("/access", env.AUTH_BASE_URL).toString(),
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+
+    if (url.pathname === "/api/access/project-revoke" && request.method === "POST") {
+      if (env.ENVIRONMENT !== "production" || authorization.membership.role !== "admin") {
+        return Response.json(
+          { ok: false, error: "Admin access required." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      const origin = request.headers.get("Origin");
+      if (origin && origin !== new URL(env.AUTH_BASE_URL).origin) {
+        return Response.json(
+          { ok: false, error: "Invalid request origin." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      try {
+        const form = await request.formData();
+        await revokeProjectMembership(
+          env.CONTROL_DB,
+          { ...authorization.session, role: authorization.membership.role },
+          env.GITHUB_REPO,
           form.get("github_id")
         );
         return redirectBack(new URL("/access", env.AUTH_BASE_URL).toString(), null);
