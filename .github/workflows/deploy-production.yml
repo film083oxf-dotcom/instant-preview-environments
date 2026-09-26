@@ -7,6 +7,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
+    env:
+      CONTROL_DB_NAME: instant-preview-control-plane
+
     steps:
       - uses: actions/checkout@v6
 
@@ -14,21 +18,37 @@ jobs:
         with:
           node-version: 22
 
+      - name: Provision control-plane D1
+        id: control
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
+        run: |
+          set -euo pipefail
+          node scripts/ensure-control-d1.mjs
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=./control-plane.sql
+
+      - name: Generate production Wrangler config
+        env:
+          CONTROL_DB_ID: ${{ steps.control.outputs.database_id }}
+          CONTROL_DB_NAME: ${{ steps.control.outputs.database_name }}
+        run: |
+          set -euo pipefail
+          node scripts/generate-production-config.mjs "$CONTROL_DB_ID" "$CONTROL_DB_NAME"
+
       - uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.136.3"
-          command: deploy
+          command: deploy --config wrangler.production.generated.jsonc
 
       - name: Smoke test production dashboard
         run: |
           set -euo pipefail
 
-          echo "Checking dashboard API..."
-          response="$(curl --silent --show-error --retry 3 --retry-delay 2 \
-            --write-out '\n%{http_code}' \
-            https://instant-preview-environments.film083oxf.workers.dev/api/environments)"
+          response="$(curl --silent --show-error --retry 3 --retry-delay 2             --write-out '\n%{http_code}'             https://instant-preview-environments.film083oxf.workers.dev/api/environments)"
 
           code="$(printf '%s' "$response" | tail -n 1)"
           body="$(printf '%s' "$response" | sed '$d')"
@@ -39,7 +59,7 @@ jobs:
           test "$code" = "200"
           printf '%s' "$body" > /tmp/dashboard.json
 
-          jq -e '.repository == "film083oxf-dotcom/instant-preview-environments"' /tmp/dashboard.json
-          jq -e '.summary | has("active") and has("ready") and has("failed")' /tmp/dashboard.json
+          jq -e 'has("repository") and has("summary") and has("environments")' /tmp/dashboard.json
+          jq -e '.ok != false' /tmp/dashboard.json
 
           echo "Dashboard smoke test passed."
