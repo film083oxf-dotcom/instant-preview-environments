@@ -10,13 +10,16 @@
     "ENVIRONMENT": "production",
     "GITHUB_REPO": "film083oxf-dotcom/instant-preview-environments",
     "PREVIEW_DOMAIN": "film083oxf.workers.dev",
-    "AUTH_BASE_URL": "https://instant-preview-environments.film083oxf.workers.dev",
-    "AUTH_ALLOWED_HOST_SUFFIX": "film083oxf.workers.dev"
+    "WORKER_NAME": "instant-preview-environments",
+    "AUTH_BASE_URL": "https://instant-preview-environments.film083oxf.workers.dev"
   },
   "previews": {
     "vars": {
       "APP_NAME": "Instant On-Demand Preview Environments",
-      "ENVIRONMENT": "preview"
+      "ENVIRONMENT": "preview",
+      "PREVIEW_DOMAIN": "film083oxf.workers.dev",
+      "WORKER_NAME": "instant-preview-environments",
+      "AUTH_BASE_URL": "https://instant-preview-environments.film083oxf.workers.dev"
     }
   }
 }
