@@ -292,7 +292,7 @@ export async function requireAuthenticated(request, env) {
   };
 }
 
-export async function requireAuthorized(request, env) {
+export async function requirePlatformAuthorized(request, env) {
   const auth = await requireAuthenticated(request, env);
   if (auth.response) return auth;
 
@@ -315,13 +315,23 @@ export async function requireAuthorized(request, env) {
     );
   }
 
+  return {
+    session: auth.session,
+    membership
+  };
+}
+
+export async function requireProjectAuthorized(request, env, repoFullName = env.GITHUB_REPO) {
+  const platform = await requirePlatformAuthorized(request, env);
+  if (platform.response) return platform;
+
   const projectMembership = await getProjectMembership(
     env.CONTROL_DB,
-    env.GITHUB_REPO,
-    auth.session.githubId
+    repoFullName,
+    platform.session.githubId
   );
 
-  if (membership.role !== "admin" && !isActiveProjectMember(projectMembership)) {
+  if (platform.membership.role !== "admin" && !isActiveProjectMember(projectMembership)) {
     return accessDenied(
       request,
       "Your GitHub account has platform access, but it is not a member of this project.",
@@ -331,10 +341,13 @@ export async function requireAuthorized(request, env) {
   }
 
   return {
-    session: auth.session,
-    membership,
+    ...platform,
     projectMembership
   };
+}
+
+export async function requireAuthorized(request, env) {
+  return requireProjectAuthorized(request, env, env.GITHUB_REPO);
 }
 
 function accessDenied(request, heading, detail, apiMessage) {
