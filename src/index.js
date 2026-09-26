@@ -6,6 +6,70 @@ import { renderAccessPage, redirectBack } from "./access-page.js";
 
 export default {
   async fetch(request, env) {
+    const requestId = crypto.randomUUID();
+    const startedAt = Date.now();
+
+    try {
+      const response = await handleRequest(request, env);
+      response.headers.set("X-Request-Id", requestId);
+
+      console.log(JSON.stringify({
+        event: "request.completed",
+        requestId,
+        environment: env.ENVIRONMENT,
+        method: request.method,
+        path: new URL(request.url).pathname,
+        status: response.status,
+        durationMs: Date.now() - startedAt
+      }));
+
+      return response;
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "request.failed",
+        requestId,
+        environment: env.ENVIRONMENT,
+        method: request.method,
+        path: new URL(request.url).pathname,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      }));
+
+      const accept = request.headers.get("Accept") || "";
+      const message = error instanceof Error ? error.message : String(error);
+
+      if (accept.includes("text/html")) {
+        return new Response(
+          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Internal Server Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Internal server error</h1><p>Request ID: <code>" +
+          escapeHtml(requestId) +
+          "</code></p></body></html>",
+          {
+            status: 500,
+            headers: {
+              "content-type": "text/html; charset=UTF-8",
+              "cache-control": "no-store",
+              "x-request-id": requestId
+            }
+          }
+        );
+      }
+
+      return Response.json(
+        { ok: false, error: "Internal server error.", requestId },
+        {
+          status: 500,
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Robots-Tag": "noindex",
+            "X-Request-Id": requestId
+          }
+        }
+      );
+    }
+  }
+};
+
+async function handleRequest(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === "/auth/login") return handleAuthLogin(request, env);
@@ -25,6 +89,57 @@ export default {
           "X-Robots-Tag": "noindex"
         }
       });
+    }
+
+    if (url.pathname === "/ready") {
+      const checks = {
+        controlPlane: false,
+        previewDatabase: env.ENVIRONMENT === "preview" ? false : null
+      };
+
+      try {
+        await checkReadyDatabase(env.CONTROL_DB);
+        checks.controlPlane = true;
+
+        if (env.ENVIRONMENT === "preview") {
+          await checkReadyDatabase(env.DB);
+          checks.previewDatabase = true;
+        }
+
+        return Response.json({
+          ok: true,
+          ready: true,
+          environment: env.ENVIRONMENT,
+          checks,
+          timestamp: new Date().toISOString()
+        }, {
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Robots-Tag": "noindex"
+          }
+        });
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "readiness.failed",
+          environment: env.ENVIRONMENT,
+          checks,
+          error: error instanceof Error ? error.message : String(error)
+        }));
+
+        return Response.json({
+          ok: false,
+          ready: false,
+          environment: env.ENVIRONMENT,
+          checks,
+          timestamp: new Date().toISOString()
+        }, {
+          status: 503,
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Robots-Tag": "noindex"
+          }
+        });
+      }
     }
 
     let authorization;
@@ -339,8 +454,12 @@ export default {
         "x-robots-tag": "noindex"
       }
     });
-  }
-};
+}
+
+async function checkReadyDatabase(db) {
+  if (!db) throw new Error("D1 binding is not configured.");
+  await db.prepare("SELECT 1 AS ok").first();
+}
 
 function escapeHtml(value) {
   return String(value)
