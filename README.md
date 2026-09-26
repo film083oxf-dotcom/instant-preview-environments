@@ -59,7 +59,19 @@ Token ของ Cloudflare ต้องมีสิทธิ์ Workers ที�
 
 อย่าใส่ค่า secret เหล่านี้ลงใน repository. Cloudflare Wrangler รองรับ secrets แยกจาก vars และ Preview Base configuration สามารถแชร์ secret ไปยัง Preview ใหม่แต่ละตัวได้
 
-Phase 6A ตอนนี้ทำหน้าที่เป็น **identity authentication**: ผู้ที่ล็อกอินด้วย GitHub จะผ่านการยืนยันตัวตนได้ก่อน ส่วนการจำกัดว่าใครมีสิทธิ์เข้าถึง repository/project/Preview ใด จะทำใน Phase 6B
+Phase 6A ตอนนี้ทำหน้าที่เป็น **identity authentication**: ผู้ที่ล็อกอินด้วย GitHub จะผ่านการยืนยันตัวตนได้ก่อน
+
+## Phase 6B — Authorization / RBAC
+
+Phase 6B เพิ่ม platform membership:
+- admin สามารถจัดการสิทธิ์จากหน้า /access
+- member ใช้งาน Dashboard และ Preview ได้
+- ผู้ใช้ที่ล็อกอินครั้งแรกจะถูกบันทึกใน central D1 แต่ยังไม่มีสิทธิ์จนกว่า admin จะ grant access
+- เจ้าของ repository จะ bootstrap เป็น admin อัตโนมัติจาก GITHUB_REPO
+- การ revoke จะมีผลกับ request ถัดไปทันที เพราะระบบตรวจ membership จาก central D1
+- /db, Dashboard และ Preview ใช้ authorization เดียวกัน
+
+ตอนนี้ RBAC เป็น **platform-wide สำหรับ repository นี้**; การแยกสิทธิ์ราย project จะต่อยอดใน Phase ถัดไป
 
 ## Local
 
@@ -82,7 +94,7 @@ A scheduled GitHub Actions job runs every 30 minutes. Default policy is 24h for 
 
 
 - TTL / garbage collection engine (Phase 5)
-- Multi-user authentication / access control สำหรับ Platform + Preview (Phase 6)
+- Multi-user authentication / access control สำหรับ Platform + Preview (Phase 6A/6B)
 - Runtime logs และ health checks
 - Multi-project dashboard
 - Database branching สำหรับ Postgres/Neon
