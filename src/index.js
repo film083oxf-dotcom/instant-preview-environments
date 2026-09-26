@@ -1,8 +1,26 @@
 import { getDashboardData, renderDashboard } from "./dashboard.js";
+import { requirePreviewAccess } from "./preview-auth.js";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/health") {
+      return Response.json({
+        ok: true,
+        environment: env.ENVIRONMENT,
+        app: env.APP_NAME,
+        timestamp: new Date().toISOString()
+      }, {
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Robots-Tag": "noindex"
+        }
+      });
+    }
+
+    const accessDenied = await requirePreviewAccess(request, env);
+    if (accessDenied) return accessDenied;
 
     if (url.pathname === "/api/environments") {
       try {
@@ -21,17 +39,6 @@ export default {
           headers: { "Cache-Control": "no-store" }
         });
       }
-    }
-
-    if (url.pathname === "/health") {
-      return Response.json({
-        ok: true,
-        environment: env.ENVIRONMENT,
-        app: env.APP_NAME,
-        timestamp: new Date().toISOString()
-      }, {
-        headers: { "Cache-Control": "no-store" }
-      });
     }
 
     if (url.pathname === "/db") {
@@ -84,7 +91,7 @@ export default {
         });
       } catch (error) {
         return new Response(
-          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Dashboard Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Dashboard temporarily unavailable</h1><p>GitHub API could not be read right now.</p><pre>" +
+          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Dashboard Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Dashboard temporarily unavailable</h1><p>Control-plane D1 could not be read right now.</p><pre>" +
           escapeHtml(error instanceof Error ? error.message : String(error)) +
           "</pre></body></html>",
           {
@@ -107,6 +114,7 @@ export default {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow,noarchive" />
   <title>${escapeHtml(env.APP_NAME)}</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
@@ -130,7 +138,7 @@ export default {
     <div class="grid">
       <div class="item"><div class="label">Application</div><div class="value">${escapeHtml(env.APP_NAME)}</div></div>
       <div class="item"><div class="label">Environment</div><div class="value">${escapeHtml(env.ENVIRONMENT)}</div></div>
-      <div class="item"><div class="label">Health</div><div class="value"><code>/health</code></div></div>
+      <div class="item"><div class="label">Health</div><div class="value"><code>/health</code> (public)</div></div>
       <div class="item"><div class="label">Database</div><div class="value">${escapeHtml(env.ENVIRONMENT === "preview" ? "Isolated D1" : "Not configured")}</div></div>
     </div>
   </main>
