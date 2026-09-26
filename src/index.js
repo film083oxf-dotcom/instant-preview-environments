@@ -1,6 +1,8 @@
 import { getDashboardData, renderDashboard } from "./dashboard.js";
-import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requireAuthenticated } from "./auth.js";
+import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requireAuthorized } from "./auth.js";
 import { requirePreviewAccess } from "./preview-auth.js";
+import { listMemberships, grantMembership, revokeMembership } from "./access-control.js";
+import { renderAccessPage, redirectBack } from "./access-page.js";
 
 export default {
   async fetch(request, env) {
@@ -25,17 +27,111 @@ export default {
       });
     }
 
+    let authorization;
+
     if (env.ENVIRONMENT === "preview") {
-      const denied = await requirePreviewAccess(request, env);
-      if (denied) return denied;
+      authorization = await requirePreviewAccess(request, env);
+      if (authorization.response) return authorization.response;
     } else {
-      const auth = await requireAuthenticated(request, env);
-      if (auth.response) return auth.response;
+      authorization = await requireAuthorized(request, env);
+      if (authorization.response) return authorization.response;
     }
 
     if (url.pathname === "/api/me") {
-      const auth = await requireAuthenticated(request, env);
-      return Response.json({ ok: true, user: auth.session }, { headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } });
+      return Response.json({
+        ok: true,
+        user: authorization.session,
+        access: authorization.membership
+      }, {
+        headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" }
+      });
+    }
+
+    if (url.pathname === "/access" && env.ENVIRONMENT === "production") {
+      if (authorization.membership.role !== "admin") {
+        return Response.json(
+          { ok: false, error: "Admin access required." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      const memberships = await listMemberships(env.CONTROL_DB);
+      return new Response(renderAccessPage({
+        repository: env.GITHUB_REPO,
+        user: { ...authorization.session, role: authorization.membership.role },
+        memberships
+      }), {
+        headers: {
+          "content-type": "text/html; charset=UTF-8",
+          "cache-control": "private, no-store",
+          "x-robots-tag": "noindex"
+        }
+      });
+    }
+
+    if (url.pathname === "/api/access/grant" && request.method === "POST") {
+      if (env.ENVIRONMENT !== "production" || authorization.membership.role !== "admin") {
+        return Response.json(
+          { ok: false, error: "Admin access required." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      const origin = request.headers.get("Origin");
+      if (origin && origin !== new URL(env.AUTH_BASE_URL).origin) {
+        return Response.json(
+          { ok: false, error: "Invalid request origin." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      try {
+        const form = await request.formData();
+        await grantMembership(
+          env.CONTROL_DB,
+          { ...authorization.session, role: authorization.membership.role },
+          form.get("login"),
+          form.get("role") || "member"
+        );
+        return redirectBack(new URL("/access", env.AUTH_BASE_URL).toString(), null);
+      } catch (error) {
+        return redirectBack(
+          new URL("/access", env.AUTH_BASE_URL).toString(),
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+
+    if (url.pathname === "/api/access/revoke" && request.method === "POST") {
+      if (env.ENVIRONMENT !== "production" || authorization.membership.role !== "admin") {
+        return Response.json(
+          { ok: false, error: "Admin access required." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      const origin = request.headers.get("Origin");
+      if (origin && origin !== new URL(env.AUTH_BASE_URL).origin) {
+        return Response.json(
+          { ok: false, error: "Invalid request origin." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      try {
+        const form = await request.formData();
+        await revokeMembership(
+          env.CONTROL_DB,
+          { ...authorization.session, role: authorization.membership.role },
+          form.get("github_id")
+        );
+        return redirectBack(new URL("/access", env.AUTH_BASE_URL).toString(), null);
+      } catch (error) {
+        return redirectBack(
+          new URL("/access", env.AUTH_BASE_URL).toString(),
+          error instanceof Error ? error.message : String(error)
+        );
+      }
     }
 
     if (url.pathname === "/api/environments") {
@@ -99,7 +195,7 @@ export default {
       try {
         const data = await getDashboardData(env);
         const auth = await requireAuthenticated(request, env);
-        return new Response(renderDashboard(data, auth.session), {
+        return new Response(renderDashboard(data, { ...authorization.session, role: authorization.membership.role }), {
           headers: {
             "content-type": "text/html; charset=UTF-8",
             "cache-control": "private, no-store",
