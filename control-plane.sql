@@ -31,3 +31,18 @@ CREATE TABLE IF NOT EXISTS auth_tickets (
 
 CREATE INDEX IF NOT EXISTS idx_auth_tickets_expires_at
   ON auth_tickets(expires_at);
+
+CREATE TABLE IF NOT EXISTS memberships (
+  github_id INTEGER PRIMARY KEY,
+  role TEXT NOT NULL CHECK (role IN ('admin', 'member')),
+  status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  granted_by TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_memberships_status
+  ON memberships(status);
+
+CREATE INDEX IF NOT EXISTS idx_memberships_role
+  ON memberships(role);
