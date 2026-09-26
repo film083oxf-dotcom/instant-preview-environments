@@ -27,6 +27,19 @@ export function renderAccessPage({ repository, user, memberships }) {
     "</main></body></html>";
 }
 
+
+export function redirectBack(url, error) {
+  const target = new URL(url);
+  if (error) target.searchParams.set("error", error);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: target.toString(),
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
