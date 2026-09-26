@@ -119,6 +119,28 @@ CREATE INDEX IF NOT EXISTS idx_project_environments_status
   ON project_environments(project_id, status);
 
 
+
+CREATE TABLE IF NOT EXISTS database_branches (
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  branch_name TEXT NOT NULL,
+  database_name TEXT,
+  commit_sha TEXT,
+  status TEXT NOT NULL CHECK (status IN ('PROVISIONING','READY','DELETING','DELETED','FAILED')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, pr_number, provider),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_database_branches_status
+  ON database_branches(project_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_database_branches_branch_id
+  ON database_branches(provider, branch_id);
+
 CREATE TABLE IF NOT EXISTS project_quotas (
   project_id TEXT PRIMARY KEY,
   max_active_environments INTEGER NOT NULL DEFAULT 10 CHECK (max_active_environments >= 1),
