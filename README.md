@@ -68,9 +68,12 @@ Production Worker:
 
 Dashboard state เก็บใน central D1 ชื่อ `instant-preview-control-plane`
 
-## Next phases
+## Phase 5 — TTL / Garbage Collection
 
-- TTL / garbage collection engine
+A scheduled GitHub Actions job runs every 30 minutes. Default policy is 24h for READY/FAILED environments and 6h for BUILDING/DELETING/DELETE FAILED states. Stale open PR environments are preserved by default; set `delete_stale_open` to `true` for an explicit cleanup run. Closed or missing PRs are eligible for direct reclamation.
+
+
+- TTL / garbage collection engine (Phase 5)
 - Authentication / access control สำหรับ Preview
 - Runtime logs และ health checks
 - Multi-project dashboard
