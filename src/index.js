@@ -13,6 +13,43 @@ export default {
       });
     }
 
+    if (url.pathname === "/db") {
+      if (!env.DB) {
+        return Response.json({
+          ok: false,
+          error: "D1 binding is not configured for this environment."
+        }, {
+          status: 500,
+          headers: { "Cache-Control": "no-store" }
+        });
+      }
+
+      const previewId = env.PREVIEW_ID || "unknown-preview";
+      const now = new Date().toISOString();
+
+      await env.DB.prepare(
+        "INSERT INTO preview_state (id, preview_id, created_at, counter) VALUES (1, ?, ?, 0) ON CONFLICT(id) DO NOTHING"
+      ).bind(previewId, now).run();
+
+      await env.DB.prepare(
+        "UPDATE preview_state SET counter = counter + 1 WHERE id = 1"
+      ).run();
+
+      const row = await env.DB.prepare(
+        "SELECT preview_id, created_at, counter FROM preview_state WHERE id = 1"
+      ).first();
+
+      return Response.json({
+        ok: true,
+        environment: env.ENVIRONMENT,
+        previewId,
+        databaseIsolation: "isolated-per-preview",
+        firstSeenAt: row?.created_at ?? null,
+        requestCounter: row?.counter ?? 0
+      }, {
+        headers: { "Cache-Control": "no-store" }
+      });
+    }
     const title = env.ENVIRONMENT === "preview"
       ? "Preview Environment Ready"
       : "Production Environment";
@@ -46,6 +83,7 @@ export default {
       <div class="item"><div class="label">Application</div><div class="value">${escapeHtml(env.APP_NAME)}</div></div>
       <div class="item"><div class="label">Environment</div><div class="value">${escapeHtml(env.ENVIRONMENT)}</div></div>
       <div class="item"><div class="label">Health</div><div class="value"><code>/health</code></div></div>
+      <div class="item"><div class="label">Database</div><div class="value">${escapeHtml(env.ENVIRONMENT === "preview" ? "Isolated D1" : "Not configured")}</div></div>
     </div>
   </main>
 </body>
