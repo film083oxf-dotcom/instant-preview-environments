@@ -1,38 +1,56 @@
-# Architecture — MVP
+# Architecture
 
 ```
-GitHub Pull Request
-        |
-        v
+Pull Request
+    |
+    v
 GitHub Actions
-        |
-        +----> wrangler preview --name pr-123
-        |             |
-        |             v
-        |      Cloudflare Worker Preview
-        |             |
-        |             +--> Preview URL
-        |
-        +----> PR comment
-
-PR closed
-   |
-   v
-GitHub Actions
-   |
-   +----> wrangler preview delete --name pr-123
-
-Failure
-   |
-   v
-workflow_run
-   |
-   v
-Gemini diagnosis (optional)
+    |
+    +----> Central D1 control plane
+    |        |
+    |        +--> BUILDING / READY / FAILED
+    |        +--> DELETING / DELETED
+    |        +--> AI diagnosis state
+    |
+    +----> Cloudflare Worker Preview
+    |        |
+    |        +--> Preview URL
+    |        +--> D1 isolated per PR
+    |
+    +----> Gemini diagnosis on failure
+    |
+    v
+Production Dashboard
 ```
 
-## State model to add later
+## Runtime states
 
-PENDING → BUILDING → PROVISIONING → READY → UPDATING → DELETING → DELETED
+`PENDING → BUILDING → READY → UPDATING → DELETING → DELETED`
 
-FAILED is a terminal state for an individual deployment attempt, not necessarily for the whole PR environment.
+`FAILED` is used when a Preview build/provisioning attempt fails.
+
+## Data planes
+
+**Control plane**
+
+Central D1 database:
+
+`instant-preview-control-plane`
+
+Stores one row per PR with lifecycle status, commit, Preview URL, isolated D1 name, and AI diagnosis state.
+
+**Preview data plane**
+
+Each PR gets a dedicated D1 database:
+
+`instant-preview-pr-<PR_NUMBER>`
+
+and a Cloudflare Worker Preview:
+
+`pr-<PR_NUMBER>-instant-preview-environments.film083oxf.workers.dev`
+
+The database is reused across pushes to the same PR and deleted during cleanup.
+
+## Dashboard
+
+The dashboard Worker reads only the central D1 control plane. It does not call the GitHub API at runtime, avoiding GitHub API rate-limit dependency.
