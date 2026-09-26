@@ -82,6 +82,14 @@ Phase 7 เพิ่ม project layer เหนือ platform membership:
 - repository ปัจจุบันถูก bootstrap เป็น project แรก โดยใช้ repo นี้เป็น project identity
 - session/authentication เดิมยังใช้ร่วมกันได้ และ data model พร้อมต่อยอด multi-project
 
+## Phase 8 — Runtime observability and readiness
+
+Phase 8 adds lightweight operational visibility:
+- every request gets an X-Request-Id
+- structured request completion/failure logs include method, path, status, duration and environment
+- /health remains a public liveness endpoint
+- /ready checks the central control-plane D1, and Preview also checks its isolated D1
+- Production and Preview workflows smoke-test /ready after deployment
 ## Local
 
 ```bash
