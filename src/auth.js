@@ -1,3 +1,5 @@
+import { ensureOwnerMembership, getMembership, isActiveMember } from "./access-control.js";
+
 const SESSION_COOKIE = "ipe_session";
 const OAUTH_STATE_COOKIE = "ipe_oauth_state";
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
@@ -287,6 +289,49 @@ export async function requireAuthenticated(request, env) {
       { ok: false, error: "Authentication required." },
       { status: 401, headers: noStoreHeaders() }
     )
+  };
+}
+
+export async function requireAuthorized(request, env) {
+  const auth = await requireAuthenticated(request, env);
+  if (auth.response) return auth;
+
+  let membership = await ensureOwnerMembership(
+    env.CONTROL_DB,
+    auth.session,
+    env.GITHUB_REPO
+  );
+
+  if (!membership) {
+    membership = await getMembership(env.CONTROL_DB, auth.session.githubId);
+  }
+
+  if (!isActiveMember(membership)) {
+    const accept = request.headers.get("Accept") || "";
+
+    if (accept.includes("text/html")) {
+      return {
+        response: new Response(
+          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Access denied</title></head><body style='font-family:system-ui;max-width:720px;margin:80px auto;padding:24px;background:#080c16;color:#eef2ff'><h1>Access denied</h1><p>Your GitHub account is authenticated, but it is not a member of this platform.</p><p>An administrator must grant your account access before you can use this Preview Platform.</p><p><a href='/auth/logout' style='color:#9db3e6'>Sign out</a></p></body></html>",
+          { status: 403, headers: noStoreHeaders() }
+        )
+      };
+    }
+
+    return {
+      response: Response.json(
+        {
+          ok: false,
+          error: "Authenticated account is not authorized for this platform."
+        },
+        { status: 403, headers: noStoreHeaders() }
+      )
+    };
+  }
+
+  return {
+    session: auth.session,
+    membership
   };
 }
 
