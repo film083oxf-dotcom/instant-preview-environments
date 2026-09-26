@@ -39,6 +39,7 @@ jobs:
       GC_FAILED_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.failed_ttl_hours || '6' }}
       GC_DELETE_STALE_OPEN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.delete_stale_open || 'false' }}
       PROJECT_ID: instant-preview-environments
+      DATABASE_PROVIDER: cloudflare-d1
 
     steps:
       - name: Checkout default branch config
@@ -127,11 +128,14 @@ jobs:
               continue
             fi
 
-            row="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="SELECT commit_sha, database_name FROM project_environments WHERE project_id='instant-preview-environments' AND pr_number=${pr} LIMIT 1;")"
+            row="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="SELECT e.commit_sha, e.database_name, b.provider AS branch_provider, b.branch_id FROM project_environments e LEFT JOIN database_branches b ON b.project_id=e.project_id AND b.pr_number=e.pr_number WHERE e.project_id='instant-preview-environments' AND e.pr_number=${pr} ORDER BY b.updated_at DESC LIMIT 1;")"
             database_name="$(printf '%s' "$row" | jq -r '[.[]?.results? // [] | .[]] | .[0].database_name // empty')"
             commit_sha="$(printf '%s' "$row" | jq -r '[.[]?.results? // [] | .[]] | .[0].commit_sha // empty')"
+            branch_provider="$(printf '%s' "$row" | jq -r '[.[]?.results? // [] | .[]] | .[0].branch_provider // empty')"
+            branch_id="$(printf '%s' "$row" | jq -r '[.[]?.results? // [] | .[]] | .[0].branch_id // empty')"
             database_name="${database_name:-instant-preview-pr-$pr}"
             commit_sha="${commit_sha:-unknown}"
+            branch_provider="${branch_provider:-$DATABASE_PROVIDER}"
 
             echo "Marking PR #$pr DELETING..."
             node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" "$pr" DELETING "$commit_sha" "" "$database_name" ""
@@ -147,12 +151,26 @@ jobs:
               cleanup_failed="true"
             fi
 
-            echo "=== Delete isolated D1: $database_name ==="
-            if db_output="$(node scripts/provider-cli.mjs delete-db --name "$database_name")"; then
-              printf '%s\n' "$db_output"
+            echo "=== Delete database branch: $branch_provider ==="
+            if [ "$branch_provider" = "neon" ] && [ -n "$branch_id" ]; then
+              if db_output="$(DATABASE_PROVIDER=neon node scripts/database-branch-cli.mjs delete --branch-id "$branch_id")"; then
+                printf '%s\n' "$db_output"
+              else
+                printf '%s\n' "$db_output"
+                cleanup_failed="true"
+              fi
             else
-              printf '%s\n' "$db_output"
-              cleanup_failed="true"
+              if db_output="$(DATABASE_PROVIDER=cloudflare-d1 node scripts/database-branch-cli.mjs delete --name "$database_name")"; then
+                printf '%s\n' "$db_output"
+              else
+                printf '%s\n' "$db_output"
+                cleanup_failed="true"
+              fi
+            fi
+
+            if [ "$cleanup_failed" = "false" ]; then
+              node scripts/write-database-branch-state.mjs /tmp/database-branch-gc.sql delete "$PROJECT_ID" "$pr" "$branch_provider" || true
+              npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/database-branch-gc.sql || true
             fi
 
             if [ "$cleanup_failed" = "true" ]; then

@@ -23,6 +23,7 @@ jobs:
       PREVIEW_DB_NAME: instant-preview-pr-${{ github.event.pull_request.number }}
       CONTROL_DB_NAME: instant-preview-control-plane
       PROJECT_ID: instant-preview-environments
+      DATABASE_PROVIDER: cloudflare-d1
 
     steps:
       - name: Checkout PR head
@@ -107,7 +108,7 @@ jobs:
           node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" ${{ github.event.pull_request.number }} BUILDING ${{ github.event.pull_request.head.sha }} "" "$PREVIEW_DB_NAME" ""
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
-      - name: Provision isolated D1 database
+      - name: Provision isolated database branch
         id: database
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -115,19 +116,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          result="$(node scripts/provider-cli.mjs ensure-preview-db --name "$PREVIEW_DB_NAME")"
+          result="$(node scripts/database-branch-cli.mjs ensure --name "$PREVIEW_DB_NAME" --pr-number "${{ github.event.pull_request.number }}" --commit-sha "${{ github.event.pull_request.head.sha }}")"
           printf '%s\n' "$result"
 
-          db_id="$(printf '%s' "$result" | jq -r '.id // empty')"
+          branch_id="$(printf '%s' "$result" | jq -r '.branchId // empty')"
+          database_name="$(printf '%s' "$result" | jq -r '.databaseName // empty')"
           created="$(printf '%s' "$result" | jq -r '.created // false')"
 
-          if [ -z "$db_id" ]; then
-            echo "Provider did not return a preview database ID."
+          if [ -z "$branch_id" ] || [ -z "$database_name" ]; then
+            echo "Database provider did not return a D1-compatible branch ID and database name."
             exit 1
           fi
 
-          echo "database_id=$db_id" >> "$GITHUB_OUTPUT"
-          echo "database_name=$PREVIEW_DB_NAME" >> "$GITHUB_OUTPUT"
+          echo "database_id=$branch_id" >> "$GITHUB_OUTPUT"
+          echo "database_name=$database_name" >> "$GITHUB_OUTPUT"
           echo "database_created=$created" >> "$GITHUB_OUTPUT"
 
       - name: Apply isolated D1 schema
@@ -146,6 +148,16 @@ jobs:
           done
 
           exit 1
+
+
+      - name: Record database branch
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/write-database-branch-state.mjs /tmp/database-branch.sql upsert "$PROJECT_ID" "${{ github.event.pull_request.number }}" "$DATABASE_PROVIDER" "${{ steps.database.outputs.database_id }}" "${{ steps.database.outputs.database_name }}" "${{ steps.database.outputs.database_name }}" "${{ github.event.pull_request.head.sha }}"
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/database-branch.sql
 
       - name: Generate Preview Wrangler config
         env:
