@@ -15,12 +15,6 @@ function flag(name, required = true) {
   return value;
 }
 
-function writeOutput(name, value) {
-  if (process.env.GITHUB_OUTPUT) {
-    execFileSync("bash", ["-lc", "printf '%s=%s\\n' " + JSON.stringify(name) + " " + JSON.stringify(value) + " >> \"$GITHUB_OUTPUT\""]);
-  }
-}
-
 const databaseProvider = process.env.DATABASE_PROVIDER || "cloudflare-d1";
 
 switch (databaseProvider) {
