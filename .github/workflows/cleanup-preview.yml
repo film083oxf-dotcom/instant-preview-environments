@@ -17,6 +17,7 @@ jobs:
       PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
       CONTROL_DB_NAME: instant-preview-control-plane
       PROJECT_ID: instant-preview-environments
+      DATABASE_PROVIDER: cloudflare-d1
 
     steps:
       - name: Checkout default branch config
@@ -40,23 +41,39 @@ jobs:
           node scripts/ensure-control-d1.mjs
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=./control-plane.sql
 
-      - name: Resolve database identifiers
+      - name: Resolve database branch identifiers
         id: ids
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: \${{ env.CONTROL_DB_NAME }}
         run: |
           set -euo pipefail
 
-          result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT commit_sha, database_name FROM project_environments WHERE project_id = 'instant-preview-environments' AND pr_number = ${PR_NUMBER} LIMIT 1;")"
+          result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT commit_sha, database_name FROM project_environments WHERE project_id = 'instant-preview-environments' AND pr_number = \${PR_NUMBER} LIMIT 1;")"
           row="$(printf '%s' "$result" | jq -c '[.[]?.results? // [] | .[]] | .[0] // empty')"
 
           db_name="$(jq -r '.database_name // empty' <<<"$row")"
-          sha="${{ github.event.pull_request.head.sha }}"
+          sha="\${{ github.event.pull_request.head.sha }}"
 
-          echo "database_name=${db_name:-instant-preview-pr-$PR_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "head_sha=${sha:-unknown}" >> "$GITHUB_OUTPUT"
+          branch_result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT provider, branch_id, branch_name, database_name FROM database_branches WHERE project_id='instant-preview-environments' AND pr_number=\${PR_NUMBER} ORDER BY updated_at DESC LIMIT 1;")"
+          branch_row="$(printf '%s' "$branch_result" | jq -c '[.[]?.results? // [] | .[]] | .[0] // empty')"
+
+          provider="$(jq -r '.provider // empty' <<<"$branch_row")"
+          branch_id="$(jq -r '.branch_id // empty' <<<"$branch_row")"
+          branch_name="$(jq -r '.branch_name // empty' <<<"$branch_row")"
+          branch_database="$(jq -r '.database_name // empty' <<<"$branch_row")"
+
+          provider="\${provider:-$DATABASE_PROVIDER}"
+          branch_id="\${branch_id:-}"
+          branch_name="\${branch_name:-$db_name}"
+          branch_database="\${branch_database:-$db_name}"
+
+          echo "database_name=\${branch_database:-instant-preview-pr-\$PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "branch_provider=$provider" >> "$GITHUB_OUTPUT"
+          echo "branch_id=$branch_id" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
+          echo "head_sha=\${sha:-unknown}" >> "$GITHUB_OUTPUT"
 
       - name: Release preview resource reservation
         env:
@@ -77,14 +94,14 @@ jobs:
           node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" "$PR_NUMBER" DELETING "${{ steps.ids.outputs.head_sha }}" "" "${{ steps.ids.outputs.database_name }}" ""
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
-      - name: Delete Preview and isolated D1
+      - name: Delete Preview and isolated database branch
         id: cleanup
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PREVIEW_DB_NAME: ${{ steps.ids.outputs.database_name }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATABASE_PROVIDER: \${{ steps.ids.outputs.branch_provider }}
         run: |
-          set +e
+          set -euo pipefail
 
           echo "=== Delete Preview: $PREVIEW_NAME ==="
           preview_output="$(node scripts/provider-cli.mjs delete-preview --name "$PREVIEW_NAME")"
@@ -93,14 +110,17 @@ jobs:
           preview_not_found="$(printf '%s' "$preview_output" | jq -r '.notFound // false')"
           test "$preview_not_found" = "false" || echo "Preview $PREVIEW_NAME was already absent."
 
-          echo "=== Delete isolated D1: $PREVIEW_DB_NAME ==="
-          db_output="$(node scripts/provider-cli.mjs delete-db --name "$PREVIEW_DB_NAME")"
+          echo "=== Delete database branch: $DATABASE_PROVIDER ==="
+          if [ "$DATABASE_PROVIDER" = "neon" ]; then
+            db_output="$(node scripts/database-branch-cli.mjs delete --branch-id "\${{ steps.ids.outputs.branch_id }}")"
+          else
+            db_output="$(node scripts/database-branch-cli.mjs delete --name "\${{ steps.ids.outputs.database_name }}")"
+          fi
           printf '%s\n' "$db_output"
 
-          db_not_found="$(printf '%s' "$db_output" | jq -r '.notFound // false')"
-          test "$db_not_found" = "false" || echo "D1 $PREVIEW_DB_NAME was already absent."
+          echo "Cleanup completed for $PREVIEW_NAME and \${{ steps.ids.outputs.database_name }}."
 
-          echo "Cleanup completed for $PREVIEW_NAME and $PREVIEW_DB_NAME."
+
 
       - name: Mark environment DELETED
         if: steps.cleanup.outcome == 'success'
