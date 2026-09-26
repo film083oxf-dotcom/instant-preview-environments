@@ -11,3 +11,23 @@ CREATE TABLE IF NOT EXISTS environments (
 
 CREATE INDEX IF NOT EXISTS idx_environments_updated_at
   ON environments(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS users (
+  github_id INTEGER PRIMARY KEY,
+  login TEXT NOT NULL UNIQUE,
+  avatar_url TEXT,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_tickets (
+  ticket_hash TEXT PRIMARY KEY,
+  github_id INTEGER NOT NULL,
+  github_login TEXT NOT NULL,
+  return_url TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_tickets_expires_at
+  ON auth_tickets(expires_at);
