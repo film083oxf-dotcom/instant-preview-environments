@@ -72,7 +72,7 @@ jobs:
           PREVIEW_DB_NAME: ${{ steps.database.outputs.database_name }}
         run: |
           set -euo pipefail
-          node scripts/generate-preview-config.mjs "$PREVIEW_DB_ID" "$PREVIEW_DB_NAME"
+          node scripts/generate-preview-config.mjs "$PREVIEW_DB_ID" "$PREVIEW_DB_NAME" "$PREVIEW_NAME"
 
       - name: Deploy Preview
         id: preview
