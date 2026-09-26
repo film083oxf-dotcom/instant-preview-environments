@@ -18,6 +18,17 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate authentication secrets
+        env:
+          GITHUB_CLIENT_ID: ${{ secrets.AUTH_GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.AUTH_GITHUB_CLIENT_SECRET }}
+          SESSION_SIGNING_KEY: ${{ secrets.SESSION_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$GITHUB_CLIENT_ID"
+          test -n "$GITHUB_CLIENT_SECRET"
+          test -n "$SESSION_SIGNING_KEY"
+
       - name: Provision control-plane D1
         id: control
         env:
@@ -33,22 +44,35 @@ jobs:
         env:
           CONTROL_DB_ID: ${{ steps.control.outputs.database_id }}
           CONTROL_DB_NAME: ${{ steps.control.outputs.database_name }}
+          GITHUB_CLIENT_ID: ${{ secrets.AUTH_GITHUB_CLIENT_ID }}
         run: |
           set -euo pipefail
-          node scripts/generate-production-config.mjs "$CONTROL_DB_ID" "$CONTROL_DB_NAME"
+          node scripts/generate-production-config.mjs "$CONTROL_DB_ID" "$CONTROL_DB_NAME" "$GITHUB_CLIENT_ID"
 
-      - uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.136.3"
-          command: deploy --config wrangler.production.generated.jsonc
-
-      - name: Smoke test production dashboard
+      - name: Create production secrets file
+        env:
+          GITHUB_CLIENT_SECRET: ${{ secrets.AUTH_GITHUB_CLIENT_SECRET }}
+          SESSION_SIGNING_KEY: ${{ secrets.SESSION_SIGNING_KEY }}
         run: |
           set -euo pipefail
+          {
+            printf 'GITHUB_CLIENT_SECRET=%s\n' "$GITHUB_CLIENT_SECRET"
+            printf 'SESSION_SIGNING_KEY=%s\n' "$SESSION_SIGNING_KEY"
+          } > /tmp/production-secrets.env
+          chmod 600 /tmp/production-secrets.env
 
-          response="$(curl --silent --show-error --retry 3 --retry-delay 2             --write-out '\n%{http_code}'             https://instant-preview-environments.film083oxf.workers.dev/api/environments)"
+      - name: Deploy production Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.136.3 deploy             --config wrangler.production.generated.jsonc             --secrets-file /tmp/production-secrets.env
+
+      - name: Smoke test public health endpoint
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --retry 3 --retry-delay 2             --write-out '\n%{http_code}'             https://instant-preview-environments.film083oxf.workers.dev/health)"
 
           code="$(printf '%s' "$response" | tail -n 1)"
           body="$(printf '%s' "$response" | sed '$d')"
@@ -57,9 +81,20 @@ jobs:
           printf '%s\n' "$body"
 
           test "$code" = "200"
-          printf '%s' "$body" > /tmp/dashboard.json
+          printf '%s' "$body" | jq -e '.ok == true and .environment == "production"'
 
-          jq -e 'has("repository") and has("summary") and has("environments")' /tmp/dashboard.json
-          jq -e '.ok != false' /tmp/dashboard.json
+      - name: Smoke test protected dashboard
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --retry 3 --retry-delay 2             --write-out '\n%{http_code}'             https://instant-preview-environments.film083oxf.workers.dev/api/environments)"
 
-          echo "Dashboard smoke test passed."
+          code="$(printf '%s' "$response" | tail -n 1)"
+          body="$(printf '%s' "$response" | sed '$d')"
+
+          echo "HTTP $code"
+          printf '%s\n' "$body"
+
+          test "$code" = "401"
+          printf '%s' "$body" | jq -e '.ok == false and .error == "Authentication required."'
+
+          echo "Authentication smoke test passed."

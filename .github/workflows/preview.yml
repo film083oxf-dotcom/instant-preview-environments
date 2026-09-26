@@ -30,6 +30,25 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate Preview session signing key
+        env:
+          SESSION_SIGNING_KEY: ${{ secrets.SESSION_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SESSION_SIGNING_KEY" ]; then
+            echo "::error::Missing required GitHub Actions secret SESSION_SIGNING_KEY."
+            exit 1
+          fi
+
+      - name: Sync Preview base session secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SESSION_SIGNING_KEY: ${{ secrets.SESSION_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$SESSION_SIGNING_KEY" | npx --yes wrangler@4.136.3 preview base-config secret put SESSION_SIGNING_KEY --worker-name instant-preview-environments
+
       - name: Provision control-plane D1
         id: control
         env:
@@ -174,6 +193,9 @@ jobs:
               `**Environment:** ${process.env.PREVIEW_NAME || 'preview'}`,
               `**Preview:** ${url}`,
               `**Database:** D1 \`${process.env.PREVIEW_DB_NAME}\` (isolated for this PR)`,
+              '',
+              '**Access:** sign in with GitHub',
+              '**Authentication:** the Preview uses the same GitHub identity as the platform',
               '',
               'Push another commit to this PR to update the same preview environment and keep the same isolated database.'
             ].join('\n');

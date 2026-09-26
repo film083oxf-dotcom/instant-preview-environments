@@ -1,15 +1,49 @@
 import { getDashboardData, renderDashboard } from "./dashboard.js";
+import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requireAuthenticated } from "./auth.js";
+import { requirePreviewAccess } from "./preview-auth.js";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/auth/login") return handleAuthLogin(request, env);
+    if (url.pathname === "/auth/callback") return handleAuthCallback(request, env);
+    if (url.pathname === "/auth/exchange") return handleAuthExchange(request, env);
+    if (url.pathname === "/auth/logout") return handleAuthLogout();
+
+    if (url.pathname === "/health") {
+      return Response.json({
+        ok: true,
+        environment: env.ENVIRONMENT,
+        app: env.APP_NAME,
+        timestamp: new Date().toISOString()
+      }, {
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Robots-Tag": "noindex"
+        }
+      });
+    }
+
+    if (env.ENVIRONMENT === "preview") {
+      const denied = await requirePreviewAccess(request, env);
+      if (denied) return denied;
+    } else {
+      const auth = await requireAuthenticated(request, env);
+      if (auth.response) return auth.response;
+    }
+
+    if (url.pathname === "/api/me") {
+      const auth = await requireAuthenticated(request, env);
+      return Response.json({ ok: true, user: auth.session }, { headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } });
+    }
 
     if (url.pathname === "/api/environments") {
       try {
         const data = await getDashboardData(env);
         return Response.json(data, {
           headers: {
-            "Cache-Control": "public, max-age=15, s-maxage=15"
+            "Cache-Control": "private, no-store"
           }
         });
       } catch (error) {
@@ -21,17 +55,6 @@ export default {
           headers: { "Cache-Control": "no-store" }
         });
       }
-    }
-
-    if (url.pathname === "/health") {
-      return Response.json({
-        ok: true,
-        environment: env.ENVIRONMENT,
-        app: env.APP_NAME,
-        timestamp: new Date().toISOString()
-      }, {
-        headers: { "Cache-Control": "no-store" }
-      });
     }
 
     if (url.pathname === "/db") {
@@ -75,16 +98,17 @@ export default {
     if (url.pathname === "/" && env.ENVIRONMENT === "production") {
       try {
         const data = await getDashboardData(env);
-        return new Response(renderDashboard(data), {
+        const auth = await requireAuthenticated(request, env);
+        return new Response(renderDashboard(data, auth.session), {
           headers: {
             "content-type": "text/html; charset=UTF-8",
-            "cache-control": "public, max-age=15, s-maxage=15",
+            "cache-control": "private, no-store",
             "x-robots-tag": "noindex"
           }
         });
       } catch (error) {
         return new Response(
-          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Dashboard Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Dashboard temporarily unavailable</h1><p>GitHub API could not be read right now.</p><pre>" +
+          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Dashboard Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Dashboard temporarily unavailable</h1><p>Control-plane D1 could not be read right now.</p><pre>" +
           escapeHtml(error instanceof Error ? error.message : String(error)) +
           "</pre></body></html>",
           {
@@ -107,6 +131,7 @@ export default {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow,noarchive" />
   <title>${escapeHtml(env.APP_NAME)}</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
@@ -126,13 +151,14 @@ export default {
   <main class="card">
     <span class="badge">${escapeHtml(env.ENVIRONMENT)}</span>
     <h1>${escapeHtml(title)}</h1>
-    <p>นี่คือ MVP ของระบบที่สร้าง Preview Environment แยกให้แต่ละ Pull Request แบบอัตโนมัติ</p>
+    <p>GitHub authentication protects this environment.</p>
     <div class="grid">
       <div class="item"><div class="label">Application</div><div class="value">${escapeHtml(env.APP_NAME)}</div></div>
       <div class="item"><div class="label">Environment</div><div class="value">${escapeHtml(env.ENVIRONMENT)}</div></div>
-      <div class="item"><div class="label">Health</div><div class="value"><code>/health</code></div></div>
+      <div class="item"><div class="label">Health</div><div class="value"><code>/health</code> (public)</div></div>
       <div class="item"><div class="label">Database</div><div class="value">${escapeHtml(env.ENVIRONMENT === "preview" ? "Isolated D1" : "Not configured")}</div></div>
     </div>
+    <p>Signed in. <a href="/auth/logout">Sign out</a></p>
   </main>
 </body>
 </html>`;

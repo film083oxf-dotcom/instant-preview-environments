@@ -5,18 +5,21 @@
   "compatibility_date": "2026-09-24",
   "workers_dev": true,
   "preview_urls": true,
-
   "vars": {
     "APP_NAME": "Instant On-Demand Preview Environments",
     "ENVIRONMENT": "production",
     "GITHUB_REPO": "film083oxf-dotcom/instant-preview-environments",
-    "PREVIEW_DOMAIN": "film083oxf.workers.dev"
+    "PREVIEW_DOMAIN": "film083oxf.workers.dev",
+    "WORKER_NAME": "instant-preview-environments",
+    "AUTH_BASE_URL": "https://instant-preview-environments.film083oxf.workers.dev"
   },
-
   "previews": {
     "vars": {
       "APP_NAME": "Instant On-Demand Preview Environments",
-      "ENVIRONMENT": "preview"
+      "ENVIRONMENT": "preview",
+      "PREVIEW_DOMAIN": "film083oxf.workers.dev",
+      "WORKER_NAME": "instant-preview-environments",
+      "AUTH_BASE_URL": "https://instant-preview-environments.film083oxf.workers.dev"
     }
   }
 }
