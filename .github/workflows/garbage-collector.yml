@@ -30,7 +30,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
   pull-requests: read
 
 jobs:
@@ -108,6 +107,8 @@ jobs:
       - name: Reclaim stale environments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
 
@@ -130,8 +131,46 @@ jobs:
               continue
             fi
 
-            echo "Dispatching cleanup for PR #$pr..."
-            gh workflow run cleanup-preview.yml               --repo "${GITHUB_REPOSITORY}"               --ref "${{ github.event.repository.default_branch }}"               -f pr_number="$pr"
+            row="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="SELECT commit_sha, database_name FROM environments WHERE pr_number=${pr} LIMIT 1;")"
+            database_name="$(printf '%s' "$row" | jq -r '[.[]?.results? // [] | .[]] | .[0].database_name // empty')"
+            commit_sha="$(printf '%s' "$row" | jq -r '[.[]?.results? // [] | .[]] | .[0].commit_sha // empty')"
+            database_name="${database_name:-instant-preview-pr-$pr}"
+            commit_sha="${commit_sha:-unknown}"
+
+            echo "Marking PR #$pr DELETING..."
+            node scripts/write-control-state.mjs /tmp/control-state.sql environment "$pr" DELETING "$commit_sha" "" "$database_name" ""
+            npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
+
+            cleanup_failed="false"
+
+            echo "=== Delete Preview: pr-$pr ==="
+            preview_output="$(npx --yes wrangler@4.136.3 preview delete --name "pr-$pr" --skip-confirmation 2>&1)"
+            preview_status=$?
+            printf '%s\n' "$preview_output"
+
+            if [ "$preview_status" -ne 0 ] && ! grep -Fq "Preview not found. [code: 10025]" <<< "$preview_output"; then
+              cleanup_failed="true"
+            fi
+
+            echo "=== Delete isolated D1: $database_name ==="
+            db_output="$(npx --yes wrangler@4.136.3 d1 delete "$database_name" --skip-confirmation 2>&1)"
+            db_status=$?
+            printf '%s\n' "$db_output"
+
+            if [ "$db_status" -ne 0 ] && ! grep -Eiq "not found|does not exist|No database|could not find|Couldn't find a D1 DB|Couldn't find.*D1" <<< "$db_output"; then
+              cleanup_failed="true"
+            fi
+
+            if [ "$cleanup_failed" = "true" ]; then
+              echo "GC cleanup failed for PR #$pr."
+              node scripts/write-control-state.mjs /tmp/control-state.sql environment "$pr" "DELETE FAILED" "$commit_sha" "" "$database_name" "Garbage collector cleanup failed."
+              npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
+              continue
+            fi
+
+            echo "GC cleanup succeeded for PR #$pr."
+            node scripts/write-control-state.mjs /tmp/control-state.sql environment "$pr" DELETED "$commit_sha" "" "$database_name" ""
+            npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
           done <<< "$candidates"
 
@@ -144,5 +183,5 @@ jobs:
             echo "- Failed/Delete TTL: ${GC_FAILED_TTL_HOURS}h"
             echo "- Delete stale open PRs: ${GC_DELETE_STALE_OPEN}"
             echo
-            echo "See the workflow log for reclaimed candidates."
+            echo "Stale environments were reclaimed directly by the GC when eligible."
           } >> "$GITHUB_STEP_SUMMARY"
