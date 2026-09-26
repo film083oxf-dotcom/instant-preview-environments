@@ -116,8 +116,7 @@ jobs:
           set -euo pipefail
 
           result="$(node scripts/provider-cli.mjs ensure-preview-db --name "$PREVIEW_DB_NAME")"
-          printf '%s
-' "$result"
+          printf '%s\\n' "$result"
 
           db_id="$(printf '%s' "$result" | jq -r '.id // empty')"
           created="$(printf '%s' "$result" | jq -r '.created // false')"
