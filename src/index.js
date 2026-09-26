@@ -1,9 +1,16 @@
 import { getDashboardData, renderDashboard } from "./dashboard.js";
+import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requireAuthenticated } from "./auth.js";
+import { requirePreviewAccess } from "./preview-auth.js";
 import { requirePreviewAccess } from "./preview-auth.js";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/auth/login") return handleAuthLogin(request, env);
+    if (url.pathname === "/auth/callback") return handleAuthCallback(request, env);
+    if (url.pathname === "/auth/exchange") return handleAuthExchange(request, env);
+    if (url.pathname === "/auth/logout") return handleAuthLogout();
 
     if (url.pathname === "/health") {
       return Response.json({
@@ -22,12 +29,25 @@ export default {
     const accessDenied = await requirePreviewAccess(request, env);
     if (accessDenied) return accessDenied;
 
+    if (env.ENVIRONMENT === "preview") {
+      const denied = await requirePreviewAccess(request, env);
+      if (denied) return denied;
+    } else {
+      const auth = await requireAuthenticated(request, env);
+      if (auth.response) return auth.response;
+    }
+
+    if (url.pathname === "/api/me") {
+      const auth = await requireAuthenticated(request, env);
+      return Response.json({ ok: true, user: auth.session }, { headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } });
+    }
+
     if (url.pathname === "/api/environments") {
       try {
         const data = await getDashboardData(env);
         return Response.json(data, {
           headers: {
-            "Cache-Control": "public, max-age=15, s-maxage=15"
+            "Cache-Control": "private, no-store"
           }
         });
       } catch (error) {
@@ -82,10 +102,11 @@ export default {
     if (url.pathname === "/" && env.ENVIRONMENT === "production") {
       try {
         const data = await getDashboardData(env);
-        return new Response(renderDashboard(data), {
+        const auth = await requireAuthenticated(request, env);
+        return new Response(renderDashboard(data, auth.session), {
           headers: {
             "content-type": "text/html; charset=UTF-8",
-            "cache-control": "public, max-age=15, s-maxage=15",
+            "cache-control": "private, no-store",
             "x-robots-tag": "noindex"
           }
         });
@@ -134,13 +155,14 @@ export default {
   <main class="card">
     <span class="badge">${escapeHtml(env.ENVIRONMENT)}</span>
     <h1>${escapeHtml(title)}</h1>
-    <p>นี่คือ MVP ของระบบที่สร้าง Preview Environment แยกให้แต่ละ Pull Request แบบอัตโนมัติ</p>
+    <p>GitHub authentication protects this environment.</p>
     <div class="grid">
       <div class="item"><div class="label">Application</div><div class="value">${escapeHtml(env.APP_NAME)}</div></div>
       <div class="item"><div class="label">Environment</div><div class="value">${escapeHtml(env.ENVIRONMENT)}</div></div>
       <div class="item"><div class="label">Health</div><div class="value"><code>/health</code> (public)</div></div>
       <div class="item"><div class="label">Database</div><div class="value">${escapeHtml(env.ENVIRONMENT === "preview" ? "Isolated D1" : "Not configured")}</div></div>
     </div>
+    <p>Signed in. <a href="/auth/logout">Sign out</a></p>
   </main>
 </body>
 </html>`;
