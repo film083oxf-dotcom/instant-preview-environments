@@ -16,6 +16,7 @@ const config = {
       ...((base.previews && base.previews.vars) || {}),
       APP_NAME: base.vars?.APP_NAME || "Instant On-Demand Preview Environments",
       ENVIRONMENT: "preview",
+      GITHUB_REPO: base.vars?.GITHUB_REPO || "film083oxf-dotcom/instant-preview-environments",
       AUTH_BASE_URL: base.vars?.AUTH_BASE_URL || "https://instant-preview-environments.film083oxf.workers.dev",
       PREVIEW_DOMAIN: base.vars?.PREVIEW_DOMAIN || "film083oxf.workers.dev",
       WORKER_NAME: base.vars?.WORKER_NAME || "instant-preview-environments",
