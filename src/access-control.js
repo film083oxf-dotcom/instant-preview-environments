@@ -1,3 +1,5 @@
+import { writeAuditEvent } from "./audit-log.js";
+
 const PLATFORM_ROLE_VALUES = ["admin", "member"];
 const PROJECT_ID = "instant-preview-environments";
 
@@ -171,6 +173,13 @@ export async function grantMembership(db, actor, login, role = "member") {
     actor.login
   ).run();
 
+  await writeAuditEvent(db, {
+    eventType: "PLATFORM_ACCESS_GRANTED",
+    actor,
+    targetGithubId: Number(user.github_id),
+    metadata: { role: normalizedRole, login: user.login }
+  });
+
   return user;
 }
 
@@ -208,6 +217,12 @@ export async function revokeMembership(db, actor, githubId) {
   await db.prepare(
     "UPDATE project_memberships SET status = 'revoked', updated_at = ? WHERE github_id = ?"
   ).bind(now, targetId).run();
+
+  await writeAuditEvent(db, {
+    eventType: "PLATFORM_ACCESS_REVOKED",
+    actor,
+    targetGithubId: targetId
+  });
 }
 
 export async function grantProjectMembership(db, actor, repoFullName, login) {
@@ -247,6 +262,14 @@ export async function grantProjectMembership(db, actor, repoFullName, login) {
     actor.login
   ).run();
 
+  await writeAuditEvent(db, {
+    eventType: "PROJECT_ACCESS_GRANTED",
+    actor,
+    projectId: project.project_id,
+    targetGithubId: Number(user.github_id),
+    metadata: { login: user.login }
+  });
+
   return user;
 }
 
@@ -273,6 +296,13 @@ export async function revokeProjectMembership(db, actor, repoFullName, githubId)
   await db.prepare(
     "UPDATE project_memberships SET status = 'revoked', updated_at = ? WHERE project_id = ? AND github_id = ?"
   ).bind(now, project.project_id, targetId).run();
+
+  await writeAuditEvent(db, {
+    eventType: "PROJECT_ACCESS_REVOKED",
+    actor,
+    projectId: project.project_id,
+    targetGithubId: targetId
+  });
 }
 
 export function isActiveMember(membership) {

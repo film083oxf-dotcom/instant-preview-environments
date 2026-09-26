@@ -134,6 +134,14 @@ Phase 13 strengthens cleanup reliability:
 - reconciliation is idempotent: already-deleted Preview/D1 resources are treated as safe cleanup targets
 - failed cleanup state remains visible in the control plane until the reconciler completes
 
+## Phase 14 — Audit & Security Baseline
+
+Phase 14 adds operational traceability and baseline response hardening:
+- central D1 stores administrative audit events for platform/project access changes and project quota updates
+- admins can review recent audit events from `/access` or `/api/audit`
+- responses add baseline security headers including MIME sniffing, clickjacking, referrer, permissions, and cross-origin resource restrictions
+- audit data stays in the control plane and does not expose secrets
+
 ## Local
 
 ```bash

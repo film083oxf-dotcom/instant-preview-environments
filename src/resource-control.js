@@ -1,3 +1,5 @@
+import { writeAuditEvent } from "./audit-log.js";
+
 const ACTIVE_ENVIRONMENTS = ["BUILDING", "READY", "FAILED", "UPDATING", "DELETING", "DELETE FAILED"];
 const BUILDING_STATES = ["BUILDING", "UPDATING"];
 
@@ -90,6 +92,17 @@ export async function updateProjectQuota(db, actor, projectId, values) {
     now,
     now
   ).run();
+
+  await writeAuditEvent(db, {
+    eventType: "PROJECT_QUOTA_UPDATED",
+    actor,
+    projectId,
+    metadata: {
+      maxActiveEnvironments,
+      maxActiveDatabases,
+      maxConcurrentBuilds
+    }
+  });
 
   return getProjectQuota(db, projectId);
 }
