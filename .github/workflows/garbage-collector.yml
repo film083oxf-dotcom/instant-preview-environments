@@ -86,12 +86,14 @@ jobs:
             FROM project_environments
             WHERE project_id = 'instant-preview-environments'
             AND (
-              status IN ('READY','FAILED')
-              AND datetime(updated_at) < datetime('now','-' || ${normal_ttl} || ' hours')
-            )
-            OR (
-              status IN ('BUILDING','DELETING','DELETE FAILED')
-              AND datetime(updated_at) < datetime('now','-' || ${failed_ttl} || ' hours')
+              (
+                status IN ('READY','FAILED')
+                AND datetime(updated_at) < datetime('now','-' || ${normal_ttl} || ' hours')
+              )
+              OR (
+                status IN ('BUILDING','DELETING','DELETE FAILED')
+                AND datetime(updated_at) < datetime('now','-' || ${failed_ttl} || ' hours')
+              )
             )
             ORDER BY datetime(updated_at) ASC
             LIMIT 50;"
