@@ -7,7 +7,7 @@
     "dev": "wrangler dev",
     "preview": "wrangler preview",
     "deploy": "wrangler deploy",
-    "typecheck": "node --check src/index.js && node --check src/auth.js && node --check src/preview-auth.js && node --check src/access-control.js && node --check src/access-page.js && node --check scripts/ai-diagnose.mjs && node --check scripts/generate-preview-config.mjs && node --check scripts/generate-production-config.mjs"
+    "typecheck": "node --check src/index.js && node --check src/auth.js && node --check src/preview-auth.js && node --check src/access-control.js && node --check src/access-page.js && node --check src/dashboard.js && node --check src/resource-control.js && node --check scripts/ai-diagnose.mjs && node --check scripts/generate-preview-config.mjs && node --check scripts/generate-production-config.mjs && node --check scripts/write-resource-reservation.mjs"
   },
   "devDependencies": {
     "wrangler": "4.136.3"
