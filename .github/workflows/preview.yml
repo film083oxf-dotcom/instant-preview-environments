@@ -194,9 +194,8 @@ jobs:
               `**Preview:** ${url}`,
               `**Database:** D1 \`${process.env.PREVIEW_DB_NAME}\` (isolated for this PR)`,
               '',
-              '**Access:** protected by HTTP Basic Auth',
-              '**Username:** \`preview\`',
-              '**Password:** the value stored in GitHub Actions secret \`PREVIEW_ACCESS_PASSWORD\`',
+              '**Access:** sign in with GitHub',
+              '**Authentication:** the Preview uses the same GitHub identity as the platform',
               '',
               'Push another commit to this PR to update the same preview environment and keep the same isolated database.'
             ].join('\n');
