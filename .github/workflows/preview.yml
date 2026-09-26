@@ -111,12 +111,12 @@ jobs:
       - name: Provision isolated database branch
         id: database
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
 
-          result="$(node scripts/database-branch-cli.mjs ensure --name "$PREVIEW_DB_NAME" --pr-number "\${{ github.event.pull_request.number }}" --commit-sha "\${{ github.event.pull_request.head.sha }}")"
+          result="$(node scripts/database-branch-cli.mjs ensure --name "$PREVIEW_DB_NAME" --pr-number "${{ github.event.pull_request.number }}" --commit-sha "${{ github.event.pull_request.head.sha }}")"
           printf '%s\n' "$result"
 
           branch_id="$(printf '%s' "$result" | jq -r '.branchId // empty')"
@@ -152,11 +152,11 @@ jobs:
 
       - name: Record database branch
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          node scripts/write-database-branch-state.mjs /tmp/database-branch.sql upsert "$PROJECT_ID" "\${{ github.event.pull_request.number }}" "$DATABASE_PROVIDER" "\${{ steps.database.outputs.database_id }}" "\${{ steps.database.outputs.database_name }}" "\${{ steps.database.outputs.database_name }}" "\${{ github.event.pull_request.head.sha }}"
+          node scripts/write-database-branch-state.mjs /tmp/database-branch.sql upsert "$PROJECT_ID" "${{ github.event.pull_request.number }}" "$DATABASE_PROVIDER" "${{ steps.database.outputs.database_id }}" "${{ steps.database.outputs.database_name }}" "${{ steps.database.outputs.database_name }}" "${{ github.event.pull_request.head.sha }}"
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/database-branch.sql
 
       - name: Generate Preview Wrangler config
