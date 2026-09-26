@@ -117,6 +117,15 @@ Phase 11 isolates infrastructure-provider logic behind a small adapter interface
 - the control-plane, authorization, dashboard, and project resource model stay provider-neutral
 - adding another provider becomes an adapter task instead of rewriting the control-plane authorization model
 
+## Phase 12 — Database Branching
+
+Phase 12 adds a provider-neutral database branch model:
+- central D1 records the database branch associated with each project/PR/provider
+- Cloudflare D1 is the active provider and records its database ID as the branch ID
+- a Neon adapter is included for branch creation and deletion when `NEON_API_KEY` and `NEON_PROJECT_ID` are configured
+- Neon branches can optionally fork from `NEON_PARENT_BRANCH_ID` and carry PR/commit annotations
+- the current Cloudflare Worker runtime remains on D1; Postgres runtime connectivity can be added without changing the project authorization model
+
 ## Local
 
 ```bash
