@@ -120,7 +120,7 @@ jobs:
 
           echo "=== Mark database branch DELETED ==="
           node scripts/write-database-branch-state.mjs /tmp/database-branch-cleanup.sql delete "$PROJECT_ID" "$PR_NUMBER" "${{ steps.ids.outputs.branch_provider }}"
-          npx --yes wrangler@4.1363 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/database-branch-cleanup.sql
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/database-branch-cleanup.sql
 
           echo "Cleanup completed for $PREVIEW_NAME and ${{ steps.ids.outputs.database_name }}."
 
