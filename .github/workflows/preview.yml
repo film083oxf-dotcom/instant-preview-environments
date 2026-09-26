@@ -88,7 +88,7 @@ jobs:
           printf '%s\n' "$response"
 
           reserved="$(printf '%s' "$response" | jq -r '[.[]?.results? // [] | .[] | .reserved // empty] | .[0] // empty')"
-          if [ "$reserved" != "1" ]; then
+          if [ -z "$reserved" ]; then
             echo "Project resource quota reached. No preview capacity was reserved."
 
             usage="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="SELECT q.max_active_environments, q.max_active_databases, q.max_concurrent_builds, (SELECT COUNT(*) FROM project_environments e WHERE e.project_id='$PROJECT_ID' AND e.status IN ('BUILDING','READY','FAILED','UPDATING','DELETING','DELETE FAILED')) AS active_environments, (SELECT COUNT(*) FROM project_environments e WHERE e.project_id='$PROJECT_ID' AND e.status IN ('BUILDING','UPDATING')) AS concurrent_builds FROM project_quotas q WHERE q.project_id='$PROJECT_ID';")"
