@@ -8,7 +8,9 @@
 
   "vars": {
     "APP_NAME": "Instant On-Demand Preview Environments",
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "GITHUB_REPO": "film083oxf-dotcom/instant-preview-environments",
+    "PREVIEW_DOMAIN": "film083oxf.workers.dev"
   },
 
   "previews": {
