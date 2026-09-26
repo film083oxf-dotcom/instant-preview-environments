@@ -126,6 +126,14 @@ Phase 12 adds a provider-neutral database branch model:
 - Neon branches can optionally fork from `NEON_PARENT_BRANCH_ID` and carry PR/commit annotations
 - the current Cloudflare Worker runtime remains on D1; Postgres runtime connectivity can be added without changing the project authorization model
 
+## Phase 13 — Production Hardening
+
+Phase 13 strengthens cleanup reliability:
+- provider cleanup commands keep machine-readable output clean for CI parsing
+- `DELETE FAILED` environments are reconciled automatically every 15 minutes, and after pushes to `main`
+- reconciliation is idempotent: already-deleted Preview/D1 resources are treated as safe cleanup targets
+- failed cleanup state remains visible in the control plane until the reconciler completes
+
 ## Local
 
 ```bash

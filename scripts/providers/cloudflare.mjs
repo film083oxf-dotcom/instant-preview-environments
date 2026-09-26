@@ -85,12 +85,14 @@ async function cloudflareDeleteD1(name) {
   }
 }
 
-function runWrangler(args) {
+function runWrangler(args, options = {}) {
   execFileSync(
     "npx",
     ["--yes", "wrangler@" + WRANGLER_VERSION, ...args],
     {
-      stdio: "inherit",
+      stdio: options.captureOutput
+        ? ["inherit", "ignore", "inherit"]
+        : "inherit",
       env: process.env
     }
   );
@@ -102,7 +104,7 @@ function cloudflareDeployPreview({ name, config }) {
 
 function cloudflareDeletePreview(name) {
   try {
-    runWrangler(["preview", "delete", "--name", name, "--skip-confirmation"]);
+    runWrangler(["preview", "delete", "--name", name, "--skip-confirmation"], { captureOutput: true });
     return { deleted: true, notFound: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
