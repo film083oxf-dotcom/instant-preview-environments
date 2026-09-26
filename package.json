@@ -10,6 +10,6 @@
     "typecheck": "node --check src/index.js && node --check scripts/ai-diagnose.mjs"
   },
   "devDependencies": {
-    "wrangler": "4.135.0"
+    "wrangler": "4.136.3"
   }
 }
