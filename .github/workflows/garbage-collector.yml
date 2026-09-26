@@ -141,17 +141,17 @@ jobs:
 
             echo "=== Delete Preview: pr-$pr ==="
             if preview_output="$(node scripts/provider-cli.mjs delete-preview --name "pr-$pr")"; then
-              printf '%s\\n' "$preview_output"
+              printf '%s\n' "$preview_output"
             else
-              printf '%s\\n' "$preview_output"
+              printf '%s\n' "$preview_output"
               cleanup_failed="true"
             fi
 
             echo "=== Delete isolated D1: $database_name ==="
             if db_output="$(node scripts/provider-cli.mjs delete-db --name "$database_name")"; then
-              printf '%s\\n' "$db_output"
+              printf '%s\n' "$db_output"
             else
-              printf '%s\\n' "$db_output"
+              printf '%s\n' "$db_output"
               cleanup_failed="true"
             fi
 
