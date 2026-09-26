@@ -91,7 +91,7 @@ function runWrangler(args, options = {}) {
     ["--yes", "wrangler@" + WRANGLER_VERSION, ...args],
     {
       stdio: options.captureOutput
-        ? ["inherit", "ignore", "inherit"]
+        ? ["inherit", "ignore", "pipe"]
         : "inherit",
       env: process.env
     }
@@ -108,7 +108,11 @@ function cloudflareDeletePreview(name) {
     return { deleted: true, notFound: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("Preview not found. [code: 10025]")) {
+    const stderr = error && typeof error === "object" && error.stderr
+      ? String(error.stderr)
+      : "";
+    const details = message + "\n" + stderr;
+    if (details.includes("Preview not found. [code: 10025]") || details.includes("code: 10025")) {
       return { deleted: false, notFound: true };
     }
     throw error;
