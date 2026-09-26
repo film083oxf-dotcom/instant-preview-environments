@@ -115,40 +115,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database"
-          headers=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
+          result="$(node scripts/provider-cli.mjs ensure-preview-db --name "$PREVIEW_DB_NAME")"
+          printf '%s
+' "$result"
 
-          list_response="$(curl -sS -G "$api" "${headers[@]}"             --data-urlencode "name=$PREVIEW_DB_NAME"             --data-urlencode "per_page=10000")"
-
-          if ! jq -e '.success == true' >/dev/null <<<"$list_response"; then
-            echo "Cloudflare D1 list request failed:"
-            echo "$list_response"
-            exit 1
-          fi
-
-          db_id="$(jq -r '.result[0].uuid // empty' <<<"$list_response")"
-          created="false"
+          db_id="$(printf '%s' "$result" | jq -r '.id // empty')"
+          created="$(printf '%s' "$result" | jq -r '.created // false')"
 
           if [ -z "$db_id" ]; then
-            echo "D1 database $PREVIEW_DB_NAME does not exist. Creating it..."
-
-            create_payload="$(jq -nc --arg name "$PREVIEW_DB_NAME" '{name:$name}')"
-            create_response="$(curl -sS -X POST "$api" "${headers[@]}"               --data "$create_payload")"
-
-            if ! jq -e '.success == true' >/dev/null <<<"$create_response"; then
-              echo "Cloudflare D1 create request failed:"
-              echo "$create_response"
-              exit 1
-            fi
-
-            db_id="$(jq -r '.result.uuid // empty' <<<"$create_response")"
-            created="true"
-          else
-            echo "Reusing existing D1 database $PREVIEW_DB_NAME."
-          fi
-
-          if [ -z "$db_id" ]; then
-            echo "Cloudflare did not return a D1 database ID."
+            echo "Provider did not return a preview database ID."
             exit 1
           fi
 
@@ -185,13 +160,13 @@ jobs:
 
       - name: Deploy Preview
         id: preview
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.136.3"
-          command: preview --name ${{ env.PREVIEW_NAME }} --config wrangler.preview.generated.jsonc
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_PROVIDER: cloudflare
+        run: |
+          set -euo pipefail
+          node scripts/provider-cli.mjs deploy-preview --name "$PREVIEW_NAME" --config wrangler.preview.generated.jsonc
 
       - name: Smoke test Preview readiness
         if: steps.preview.outcome == 'success'
