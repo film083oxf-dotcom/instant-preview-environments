@@ -15,6 +15,7 @@ jobs:
     env:
       PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
       PREVIEW_DB_NAME: instant-preview-pr-${{ github.event.pull_request.number }}
+      CONTROL_DB_NAME: instant-preview-control-plane
 
     steps:
       - name: Checkout default branch config
@@ -27,7 +28,28 @@ jobs:
         with:
           node-version: 22
 
+      - name: Provision control-plane D1
+        id: control
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
+        run: |
+          set -euo pipefail
+          node scripts/ensure-control-d1.mjs
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=./control-plane.sql
+
+      - name: Mark environment DELETING
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment ${{ github.event.pull_request.number }} DELETING ${{ github.event.pull_request.head.sha }} "" "$PREVIEW_DB_NAME" ""
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
+
       - name: Delete Preview and isolated D1
+        id: cleanup
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -37,21 +59,19 @@ jobs:
           echo "=== Delete Preview: $PREVIEW_NAME ==="
           preview_output=$(npx --yes wrangler@4.136.3 preview delete --name "$PREVIEW_NAME" --skip-confirmation 2>&1)
           preview_status=$?
-          printf '%s\n' "$preview_output"
+          printf '%s
+' "$preview_output"
 
           if [ "$preview_status" -ne 0 ] && ! grep -Fq "Preview not found. [code: 10025]" <<< "$preview_output"; then
             echo "Preview deletion failed."
             exit "$preview_status"
           fi
 
-          if grep -Fq "Preview not found. [code: 10025]" <<< "$preview_output"; then
-            echo "Preview $PREVIEW_NAME does not exist. Nothing to delete."
-          fi
-
           echo "=== Delete isolated D1: $PREVIEW_DB_NAME ==="
           db_output=$(npx --yes wrangler@4.136.3 d1 delete "$PREVIEW_DB_NAME" --skip-confirmation 2>&1)
           db_status=$?
-          printf '%s\n' "$db_output"
+          printf '%s
+' "$db_output"
 
           if [ "$db_status" -ne 0 ]; then
             if grep -Eiq "not found|does not exist|No database|could not find|Couldn't find a D1 DB|Couldn't find.*D1" <<< "$db_output"; then
@@ -64,3 +84,23 @@ jobs:
           fi
 
           echo "Cleanup completed for $PREVIEW_NAME and $PREVIEW_DB_NAME."
+
+      - name: Mark environment DELETED
+        if: steps.cleanup.outcome == 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment ${{ github.event.pull_request.number }} DELETED ${{ github.event.pull_request.head.sha }} "" "$PREVIEW_DB_NAME" ""
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
+
+      - name: Mark environment DELETE FAILED
+        if: always() && steps.cleanup.outcome != 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment ${{ github.event.pull_request.number }} "DELETE FAILED" ${{ github.event.pull_request.head.sha }} "" "$PREVIEW_DB_NAME" "Cleanup workflow failed."
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
