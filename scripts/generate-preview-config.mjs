@@ -14,6 +14,11 @@ const config = {
     ...(base.previews || {}),
     vars: {
       ...((base.previews && base.previews.vars) || {}),
+      APP_NAME: base.vars?.APP_NAME || "Instant On-Demand Preview Environments",
+      ENVIRONMENT: "preview",
+      AUTH_BASE_URL: base.vars?.AUTH_BASE_URL || "https://instant-preview-environments.film083oxf.workers.dev",
+      PREVIEW_DOMAIN: base.vars?.PREVIEW_DOMAIN || "film083oxf.workers.dev",
+      WORKER_NAME: base.vars?.WORKER_NAME || "instant-preview-environments",
       PREVIEW_ID: previewId
     },
     d1_databases: [
