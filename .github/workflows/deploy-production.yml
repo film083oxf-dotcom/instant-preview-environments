@@ -83,6 +83,21 @@ jobs:
           test "$code" = "200"
           printf '%s' "$body" | jq -e '.ok == true and .environment == "production"'
 
+      - name: Smoke test readiness
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --retry 3 --retry-delay 2 \
+            --write-out '\n%{http_code}' \
+            https://instant-preview-environments.film083oxf.workers.dev/ready)"
+
+          code="$(printf '%s' "$response" | tail -n 1)"
+          body="$(printf '%s' "$response" | sed '$d')"
+
+          echo "HTTP $code"
+          printf '%s\n' "$body"
+
+          test "$code" = "200"
+          printf '%s' "$body" | jq -e '.ok == true and .ready == true and .checks.controlPlane == true'
       - name: Smoke test protected dashboard
         run: |
           set -euo pipefail
