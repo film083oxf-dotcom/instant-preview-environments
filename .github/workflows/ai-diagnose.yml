@@ -14,6 +14,9 @@ jobs:
   diagnose:
     if: github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
+    env:
+      CONTROL_DB_NAME: instant-preview-control-plane
+
     steps:
       - name: Checkout diagnosis script
         uses: actions/checkout@v6
@@ -67,6 +70,29 @@ jobs:
         run: |
           PR=$(gh api -H "Accept: application/vnd.github+json"             "/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}"             --jq '.pull_requests[0].number // empty')
           echo "number=$PR" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure control-plane D1
+        if: steps.pr.outputs.number != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
+        run: |
+          set -euo pipefail
+          node scripts/ensure-control-d1.mjs
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=./control-plane.sql
+
+      - name: Mark AI diagnosis state
+        if: always() && steps.pr.outputs.number != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
+          AI_STATUS: ${{ steps.diagnose.outcome == 'success' && 'DIAGNOSED' || 'UNAVAILABLE' }}
+        run: |
+          set +e
+          node scripts/write-control-state.mjs /tmp/control-state.sql ai ${{ steps.pr.outputs.number }} "$AI_STATUS"
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
       - name: Comment diagnosis
         if: always() && steps.pr.outputs.number != ''
