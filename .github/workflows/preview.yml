@@ -85,7 +85,7 @@ jobs:
           response="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --file=/tmp/resource-reservation.sql)"
           printf '%s\n' "$response"
 
-          reserved="$(printf '%s' "$response" | jq -r '[.[]?.results? // [] | .[]] | .[-1].reserved // 0')"
+          reserved="$(printf '%s' "$response" | jq -r '[.[]?.meta?.changes // 0] | .[-1] // 0')"
           if [ "$reserved" != "1" ]; then
             echo "Project resource quota reached. No preview capacity was reserved."
 
