@@ -71,7 +71,16 @@ Phase 6B เพิ่ม platform membership:
 - การ revoke จะมีผลกับ request ถัดไปทันที เพราะระบบตรวจ membership จาก central D1
 - /db, Dashboard และ Preview ใช้ authorization เดียวกัน
 
-ตอนนี้ RBAC เป็น **platform-wide สำหรับ repository นี้**; การแยกสิทธิ์ราย project จะต่อยอดใน Phase ถัดไป
+## Phase 7 — Project-scoped authorization
+
+Phase 7 เพิ่ม project layer เหนือ platform membership:
+- central D1 มี `projects` และ `project_memberships`
+- platform member ต้องมี project membership จึงใช้ project นั้นได้
+- platform admin bypass project membership เพื่อการจัดการระบบ
+- admin สามารถ Grant/Revoke project access จากหน้า `/access`
+- การ revoke platform access จะ revoke project access ของ account นั้นด้วย
+- repository ปัจจุบันถูก bootstrap เป็น project แรก โดยใช้ repo นี้เป็น project identity
+- session/authentication เดิมยังใช้ร่วมกันได้ และ data model พร้อมต่อยอด multi-project
 
 ## Local
 
