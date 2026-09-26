@@ -80,6 +80,7 @@ WHERE
     WHERE project_id = ${projectSql}
       AND datetime(expires_at) > datetime('now')
   )
+)
   < (
     SELECT max_concurrent_builds
     FROM project_quotas
