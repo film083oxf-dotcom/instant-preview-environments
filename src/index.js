@@ -126,7 +126,7 @@ export default {
   <main class="card">
     <span class="badge">${escapeHtml(env.ENVIRONMENT)}</span>
     <h1>${escapeHtml(title)}</h1>
-    <p>นี่คือ MVP ของระบบที่สร้าง Preview Environment แยกให้แต่ละ Pull Request แบบอัตโนมัติ</p>
+    <p>นี่คือ MVP ของระบบที่สร้าง Preview Environment แยกให้แต่ละ Pull Request แบบอัตโนมัติ (Phase 4 Dashboard Test)</p>
     <div class="grid">
       <div class="item"><div class="label">Application</div><div class="value">${escapeHtml(env.APP_NAME)}</div></div>
       <div class="item"><div class="label">Environment</div><div class="value">${escapeHtml(env.ENVIRONMENT)}</div></div>
