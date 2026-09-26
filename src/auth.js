@@ -140,31 +140,37 @@ export async function handleAuthCallback(request, env) {
   const isProduction = target.origin === productionOrigin;
 
   if (isProduction) {
-    return new Response(null, {
+    const response = new Response(null, {
       status: 302,
       headers: {
         Location: target.toString(),
-        "Set-Cookie": joinCookies(
-          serializeCookie(
-            SESSION_COOKIE,
-            await createSession(
-              {
-                githubId: githubUser.id,
-                login: githubUser.login,
-                avatarUrl: githubUser.avatar_url || ""
-              },
-              env.SESSION_SIGNING_KEY
-            ),
-            SESSION_TTL_SECONDS,
-            true
-          ),
-          serializeCookie(OAUTH_STATE_COOKIE, "", 0, true)
-        ),
         "Cache-Control": "no-store"
       }
     });
-  }
 
+    response.headers.append(
+      "Set-Cookie",
+      serializeCookie(
+        SESSION_COOKIE,
+        await createSession(
+          {
+            githubId: githubUser.id,
+            login: githubUser.login,
+            avatarUrl: githubUser.avatar_url || ""
+          },
+          env.SESSION_SIGNING_KEY
+        ),
+        SESSION_TTL_SECONDS,
+        true
+      )
+    );
+    response.headers.append(
+      "Set-Cookie",
+      serializeCookie(OAUTH_STATE_COOKIE, "", 0, true)
+    );
+
+    return response;
+  }
   const ticket = randomToken(32);
   await createAuthTicket(env.CONTROL_DB, {
     ticket,
@@ -384,11 +390,20 @@ function sanitizeReturnTo(value, env) {
   try {
     const target = new URL(value);
     const production = new URL(env.AUTH_BASE_URL);
-    const suffix = String(env.AUTH_ALLOWED_HOST_SUFFIX || "").toLowerCase();
+    const previewDomain = String(env.PREVIEW_DOMAIN || "").toLowerCase().replace(/^\.+/, "");
+    const workerName = String(env.WORKER_NAME || "instant-preview-environments");
 
     if (target.protocol !== "https:") return fallback;
     if (target.hostname === production.hostname) return target.toString();
-    if (suffix && target.hostname.toLowerCase().endsWith("." + suffix)) return target.toString();
+
+    const previewPattern = new RegExp(
+      "^pr-[0-9]+-" + escapeRegExp(workerName) + "\\." + escapeRegExp(previewDomain) + "$",
+      "i"
+    );
+
+    if (previewDomain && previewPattern.test(target.hostname)) {
+      return target.toString();
+    }
   } catch {
     // Ignore malformed return URLs.
   }
@@ -520,8 +535,10 @@ function serializeCookie(name, value, maxAge, httpOnly) {
   return attributes.join("; ");
 }
 
-function joinCookies(...cookies) {
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\function joinCookies(...cookies) {
   return cookies.join(", ");
+}");
 }
 
 function noStoreHeaders() {
