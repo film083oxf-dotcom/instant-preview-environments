@@ -98,6 +98,28 @@ SELECT
   COALESCE(granted_by, 'migration:phase7')
 FROM memberships;
 
+
+CREATE TABLE IF NOT EXISTS audit_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  actor_github_id INTEGER,
+  actor_login TEXT,
+  project_id TEXT,
+  pr_number INTEGER,
+  target_github_id INTEGER,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at
+  ON audit_events(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_project_created_at
+  ON audit_events(project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_actor_created_at
+  ON audit_events(actor_github_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS project_environments (
   project_id TEXT NOT NULL,
   pr_number INTEGER NOT NULL,
