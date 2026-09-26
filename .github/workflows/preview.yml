@@ -81,11 +81,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --command="DELETE FROM project_resource_reservations WHERE project_id='$PROJECT_ID' AND pr_number=${{ github.event.pull_request.number }};"
           node scripts/write-resource-reservation.mjs /tmp/resource-reservation.sql reserve "$PROJECT_ID" "${{ github.event.pull_request.number }}"
-          response="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --file=/tmp/resource-reservation.sql)"
+          reservation_sql="$(cat /tmp/resource-reservation.sql)"
+          response="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="$reservation_sql")"
           printf '%s\n' "$response"
 
-          reserved="$(printf '%s' "$response" | jq -r '[.[]?.meta?.changes // 0] | .[-1] // 0')"
+          reserved="$(printf '%s' "$response" | jq -r '[.[]?.results? // [] | .[] | .reserved // empty] | .[0] // empty')"
           if [ "$reserved" != "1" ]; then
             echo "Project resource quota reached. No preview capacity was reserved."
 
