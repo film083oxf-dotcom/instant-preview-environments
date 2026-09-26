@@ -30,6 +30,21 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate Preview access password
+        id: access
+        env:
+          PREVIEW_ACCESS_PASSWORD: ${{ secrets.PREVIEW_ACCESS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PREVIEW_ACCESS_PASSWORD" ]; then
+            echo "::error::Missing required GitHub Actions secret PREVIEW_ACCESS_PASSWORD."
+            echo "Create a long random password in Settings → Secrets and variables → Actions before using Preview Environments."
+            exit 1
+          fi
+
+          access_hash="$(printf '%s' "$PREVIEW_ACCESS_PASSWORD" | sha256sum | awk '{print $1}')"
+          echo "access_password_hash=$access_hash" >> "$GITHUB_OUTPUT"
+
       - name: Provision control-plane D1
         id: control
         env:
@@ -129,9 +144,10 @@ jobs:
           PREVIEW_DB_NAME: ${{ steps.database.outputs.database_name }}
           CONTROL_DB_ID: ${{ steps.control.outputs.database_id }}
           CONTROL_DB_NAME: ${{ steps.control.outputs.database_name }}
+          ACCESS_PASSWORD_HASH: ${{ steps.access.outputs.access_password_hash }}
         run: |
           set -euo pipefail
-          node scripts/generate-preview-config.mjs             "$PREVIEW_DB_ID"             "$PREVIEW_DB_NAME"             "$PREVIEW_NAME"             "$CONTROL_DB_ID"             "$CONTROL_DB_NAME"
+          node scripts/generate-preview-config.mjs             "$PREVIEW_DB_ID"             "$PREVIEW_DB_NAME"             "$PREVIEW_NAME"             "$CONTROL_DB_ID"             "$CONTROL_DB_NAME"             "$ACCESS_PASSWORD_HASH"
 
       - name: Deploy Preview
         id: preview
@@ -174,6 +190,10 @@ jobs:
               `**Environment:** ${process.env.PREVIEW_NAME || 'preview'}`,
               `**Preview:** ${url}`,
               `**Database:** D1 \`${process.env.PREVIEW_DB_NAME}\` (isolated for this PR)`,
+              '',
+              '**Access:** protected by HTTP Basic Auth',
+              '**Username:** \`preview\`',
+              '**Password:** the value stored in GitHub Actions secret \`PREVIEW_ACCESS_PASSWORD\`',
               '',
               'Push another commit to this PR to update the same preview environment and keep the same isolated database.'
             ].join('\n');
