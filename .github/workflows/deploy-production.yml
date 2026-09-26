@@ -26,9 +26,18 @@ jobs:
           set -euo pipefail
 
           echo "Checking dashboard API..."
-          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
-            https://instant-preview-environments.film083oxf.workers.dev/api/environments \
-            -o /tmp/dashboard.json
+          response="$(curl --silent --show-error --retry 3 --retry-delay 2 \
+            --write-out '\n%{http_code}' \
+            https://instant-preview-environments.film083oxf.workers.dev/api/environments)"
+
+          code="$(printf '%s' "$response" | tail -n 1)"
+          body="$(printf '%s' "$response" | sed '$d')"
+
+          echo "HTTP $code"
+          printf '%s\n' "$body"
+
+          test "$code" = "200"
+          printf '%s' "$body" > /tmp/dashboard.json
 
           jq -e '.repository == "film083oxf-dotcom/instant-preview-environments"' /tmp/dashboard.json
           jq -e '.summary | has("active") and has("ready") and has("failed")' /tmp/dashboard.json
