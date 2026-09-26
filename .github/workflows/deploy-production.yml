@@ -67,7 +67,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.136.3 deploy             --config wrangler.production.generated.jsonc             --secrets-file /tmp/production-secrets.env
+          PREVIEW_PROVIDER=cloudflare node scripts/provider-cli.mjs deploy-production --config wrangler.production.generated.jsonc --secrets-file /tmp/production-secrets.env
 
       - name: Smoke test public health endpoint
         run: |
