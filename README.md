@@ -49,20 +49,16 @@ AI:
 
 Token ของ Cloudflare ต้องมีสิทธิ์ Workers ที่ใช้อยู่เดิม และ **D1 Edit** สำหรับจัดการฐานข้อมูล Preview/control plane
 
-## Security boundary
+NaN
+## Phase 6 — Multi-user authentication
 
-Preview workflow ทำงานเฉพาะ PR ที่มาจาก repository เดียวกัน เพื่อไม่ให้ fork PR เข้าถึง Cloudflare secrets
+ต้องตั้งค่า GitHub App และเพิ่ม GitHub Actions secrets ต่อไปนี้:
 
-Preview URL ต้องผ่าน HTTP Basic Auth ก่อนเข้าถึง `/`, `/db` และ `/api/environments` ภายใน Preview โดย username คือ `preview` และ password มาจาก GitHub Actions secret `PREVIEW_ACCESS_PASSWORD` เท่านั้น ส่วน `/health` เปิดไว้สำหรับ liveness checks
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `SESSION_SIGNING_KEY`
 
-### ตั้งค่า Preview password
-
-ไปที่ GitHub repository → **Settings → Secrets and variables → Actions → New repository secret** แล้วสร้าง:
-
-- Name: `PREVIEW_ACCESS_PASSWORD`
-- Value: ตั้งเป็นรหัสผ่านแบบสุ่มและยาวพอสมควร โดยไม่ส่งรหัสผ่านนี้มาในแชต
-
-Workflow จะคำนวณ SHA-256 hash แล้วฝังเฉพาะ hash ลงใน Preview Worker config ไม่ฝังรหัสผ่านจริง
+อย่าใส่ค่า secret เหล่านี้ลงใน repository. Cloudflare Wrangler รองรับ secrets แยกจาก vars และ Preview Base configuration สามารถแชร์ secret ไปยัง Preview ใหม่แต่ละตัวได้
 
 ## Local
 
@@ -85,7 +81,7 @@ A scheduled GitHub Actions job runs every 30 minutes. Default policy is 24h for 
 
 
 - TTL / garbage collection engine (Phase 5)
-- Authentication / access control สำหรับ Preview (Phase 6)
+- Multi-user authentication / access control สำหรับ Platform + Preview (Phase 6)
 - Runtime logs และ health checks
 - Multi-project dashboard
 - Database branching สำหรับ Postgres/Neon
