@@ -1,0 +1,148 @@
+name: Preview Garbage Collector
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      ttl_hours:
+        description: "TTL in hours for normal stale environments"
+        required: false
+        default: "24"
+        type: string
+      failed_ttl_hours:
+        description: "TTL in hours for FAILED/DELETING environments"
+        required: false
+        default: "6"
+        type: string
+      delete_stale_open:
+        description: "Delete stale environments whose PR is still open"
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: preview-garbage-collector
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+
+    env:
+      CONTROL_DB_NAME: instant-preview-control-plane
+      GC_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ttl_hours || '24' }}
+      GC_FAILED_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.failed_ttl_hours || '6' }}
+      GC_DELETE_STALE_OPEN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.delete_stale_open || 'false' }}
+      # Temporary integration-test seed. Remove after Phase 5 validation.
+      GC_TEST_PR_NUMBER: "4"
+
+    steps:
+      - name: Checkout default branch config
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Ensure control-plane D1
+        id: control
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
+        run: |
+          set -euo pipefail
+          node scripts/ensure-control-d1.mjs
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=./control-plane.sql
+
+      - name: Seed one stale closed PR for integration test
+        if: env.GC_TEST_PR_NUMBER != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --command="UPDATE environments SET status='DELETE FAILED', updated_at=datetime('now','-48 hours') WHERE pr_number=${GC_TEST_PR_NUMBER};"
+
+      - name: Find stale environments
+        id: stale
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+
+          normal_ttl="${GC_TTL_HOURS}"
+          failed_ttl="${GC_FAILED_TTL_HOURS}"
+
+          query="SELECT pr_number, status, updated_at
+            FROM environments
+            WHERE (
+              status IN ('READY','FAILED')
+              AND datetime(updated_at) < datetime('now','-' || ${normal_ttl} || ' hours')
+            )
+            OR (
+              status IN ('BUILDING','DELETING','DELETE FAILED')
+              AND datetime(updated_at) < datetime('now','-' || ${failed_ttl} || ' hours')
+            )
+            ORDER BY datetime(updated_at) ASC
+            LIMIT 50;"
+
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="$query" > /tmp/stale.json
+
+          echo "Stale candidates:"
+          jq -r '.[]?.results? // [] | .[] | [.pr_number, .status, .updated_at] | @tsv' /tmp/stale.json || true
+
+      - name: Reclaim stale environments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          candidates="$(jq -r '.[]?.results? // [] | .[] | [.pr_number, .status, .updated_at] | @tsv' /tmp/stale.json || true)"
+
+          if [ -z "$candidates" ]; then
+            echo "No stale environments found."
+            exit 0
+          fi
+
+          while IFS=$'\t' read -r pr status updated; do
+            [ -z "$pr" ] && continue
+
+            state="$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${pr}" --jq '.state' 2>/dev/null || echo missing)"
+
+            echo "PR #$pr status=$status updated_at=$updated github_state=$state"
+
+            if [ "$state" = "open" ] && [ "$GC_DELETE_STALE_OPEN" != "true" ]; then
+              echo "Skipping open PR #$pr because GC_DELETE_STALE_OPEN=false."
+              continue
+            fi
+
+            echo "Dispatching cleanup for PR #$pr..."
+            gh workflow run cleanup-preview.yml               --repo "${GITHUB_REPOSITORY}"               --ref "${{ github.event.repository.default_branch }}"               -f pr_number="$pr"
+
+          done <<< "$candidates"
+
+      - name: Write GC summary
+        run: |
+          {
+            echo "## 🧹 Preview Garbage Collector"
+            echo
+            echo "- Normal TTL: ${GC_TTL_HOURS}h"
+            echo "- Failed/Delete TTL: ${GC_FAILED_TTL_HOURS}h"
+            echo "- Delete stale open PRs: ${GC_DELETE_STALE_OPEN}"
+            echo
+            echo "See the workflow log for reclaimed candidates."
+          } >> "$GITHUB_STEP_SUMMARY"
