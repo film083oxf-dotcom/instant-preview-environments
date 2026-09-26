@@ -66,8 +66,9 @@ export async function getDashboardData(env) {
       previewRun: previewRun ? { id: previewRun.id, status: previewRun.status, conclusion: previewRun.conclusion, updatedAt: previewRun.updated_at } : null
     };
   });
-  const ai = runs.filter(function(run) { return run.name === AI_WORKFLOW; })
-    .sort(function(a, b) { return new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at); })[0] || null;
+  const aiCandidates = runs.filter(function(run) { return run.name === AI_WORKFLOW; })
+    .sort(function(a, b) { return new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at); });
+  const ai = aiCandidates.find(function(run) { return run.conclusion === "success"; }) || aiCandidates[0] || null;
   return {
     generatedAt: new Date().toISOString(),
     repository: repo,
