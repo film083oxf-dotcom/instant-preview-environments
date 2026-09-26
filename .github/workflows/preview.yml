@@ -9,6 +9,10 @@ permissions:
   deployments: write
   pull-requests: write
 
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   preview:
     if: github.event.pull_request.head.repo.full_name == github.repository
@@ -67,6 +71,32 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=./control-plane.sql
+
+      - name: Reserve project resources
+        id: resource_reservation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
+        run: |
+          set -euo pipefail
+
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --command="DELETE FROM project_resource_reservations WHERE project_id='$PROJECT_ID' AND pr_number=${{ github.event.pull_request.number }};"
+          node scripts/write-resource-reservation.mjs /tmp/resource-reservation.sql reserve "$PROJECT_ID" "${{ github.event.pull_request.number }}"
+          reservation_sql="$(cat /tmp/resource-reservation.sql)"
+          response="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="$reservation_sql")"
+          printf '%s\n' "$response"
+
+          reserved="$(printf '%s' "$response" | jq -r '[.[]?.results? // [] | .[] | .reserved // empty] | .[0] // empty')"
+          if [ -z "$reserved" ]; then
+            echo "Project resource quota reached. No preview capacity was reserved."
+
+            usage="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="SELECT q.max_active_environments, q.max_active_databases, q.max_concurrent_builds, (SELECT COUNT(*) FROM project_environments e WHERE e.project_id='$PROJECT_ID' AND e.status IN ('BUILDING','READY','FAILED','UPDATING','DELETING','DELETE FAILED')) AS active_environments, (SELECT COUNT(*) FROM project_environments e WHERE e.project_id='$PROJECT_ID' AND e.status IN ('BUILDING','UPDATING')) AS concurrent_builds FROM project_quotas q WHERE q.project_id='$PROJECT_ID';")"
+            printf '%s\n' "$usage" | jq -r '.[]?.results? // [] | .[] | "capacity: environments \(.active_environments)/\(.max_active_environments), databases quota \(.max_active_databases), builds \(.concurrent_builds)/\(.max_concurrent_builds)"' || true
+            exit 78
+          fi
+
+          echo "Project resource reservation acquired."
 
       - name: Mark environment BUILDING
         env:
@@ -192,6 +222,17 @@ jobs:
           set -euo pipefail
           node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" ${{ github.event.pull_request.number }} READY ${{ github.event.pull_request.head.sha }} "$PREVIEW_URL" "$PREVIEW_DB_NAME" ""
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
+
+      - name: Release project resource reservation
+        if: always() && steps.resource_reservation.outcome != 'skipped'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
+        run: |
+          set +e
+          node scripts/write-resource-reservation.mjs /tmp/resource-reservation-release.sql release "$PROJECT_ID" "${{ github.event.pull_request.number }}"
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/resource-reservation-release.sql
 
       - name: Comment on PR
         if: steps.preview.outcome == 'success'

@@ -62,6 +62,14 @@ jobs:
           node scripts/ensure-control-d1.mjs
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=./control-plane.sql
 
+      - name: Purge expired resource reservations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --command="DELETE FROM project_resource_reservations WHERE datetime(expires_at) <= datetime('now');"
+
       - name: Find stale environments
         id: stale
         env:

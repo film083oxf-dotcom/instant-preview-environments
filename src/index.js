@@ -3,6 +3,7 @@ import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogo
 import { requirePreviewAccess } from "./preview-auth.js";
 import { getProjectById, getProjectMembership, listAccessibleProjects, listMemberships, listProjectMemberships, grantMembership, revokeMembership, grantProjectMembership, revokeProjectMembership } from "./access-control.js";
 import { renderAccessPage, redirectBack } from "./access-page.js";
+import { getProjectQuota, getProjectResourceUsage, updateProjectQuota } from "./resource-control.js";
 
 export default {
   async fetch(request, env) {
@@ -194,16 +195,21 @@ async function handleRequest(request, env) {
         );
       }
 
-      const [memberships, projectMemberships] = await Promise.all([
+      const currentProject = await getProjectById(env.CONTROL_DB, "instant-preview-environments");
+      const [memberships, projectMemberships, quota, resourceUsage] = await Promise.all([
         listMemberships(env.CONTROL_DB),
-        listProjectMemberships(env.CONTROL_DB, env.GITHUB_REPO)
+        listProjectMemberships(env.CONTROL_DB, env.GITHUB_REPO),
+        getProjectQuota(env.CONTROL_DB, currentProject?.project_id || "instant-preview-environments"),
+        getProjectResourceUsage(env.CONTROL_DB, currentProject?.project_id || "instant-preview-environments")
       ]);
 
       return new Response(renderAccessPage({
         repository: env.GITHUB_REPO,
         user: { ...authorization.session, role: authorization.membership.role },
         memberships,
-        projectMemberships
+        projectMemberships,
+        quota,
+        resourceUsage
       }), {
         headers: {
           "content-type": "text/html; charset=UTF-8",
@@ -335,6 +341,47 @@ async function handleRequest(request, env) {
           env.GITHUB_REPO,
           form.get("github_id")
         );
+        return redirectBack(new URL("/access", env.AUTH_BASE_URL).toString(), null);
+      } catch (error) {
+        return redirectBack(
+          new URL("/access", env.AUTH_BASE_URL).toString(),
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+
+    if (url.pathname === "/api/resource-quota/update" && request.method === "POST") {
+      if (env.ENVIRONMENT !== "production" || authorization.membership.role !== "admin") {
+        return Response.json(
+          { ok: false, error: "Admin access required." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      const origin = request.headers.get("Origin");
+      if (origin && origin !== new URL(env.AUTH_BASE_URL).origin) {
+        return Response.json(
+          { ok: false, error: "Invalid request origin." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      try {
+        const form = await request.formData();
+        const project = await getProjectById(env.CONTROL_DB, "instant-preview-environments");
+        if (!project) throw new Error("Project not found.");
+
+        await updateProjectQuota(
+          env.CONTROL_DB,
+          { ...authorization.session, role: authorization.membership.role },
+          project.project_id,
+          {
+            max_active_environments: form.get("max_active_environments"),
+            max_active_databases: form.get("max_active_databases"),
+            max_concurrent_builds: form.get("max_concurrent_builds")
+          }
+        );
+
         return redirectBack(new URL("/access", env.AUTH_BASE_URL).toString(), null);
       } catch (error) {
         return redirectBack(
