@@ -45,7 +45,7 @@ jobs:
 
           if [ -z "$db_id" ]; then
             echo "D1 database $PREVIEW_DB_NAME does not exist. Creating it..."
-            output="$(npx --yes wrangler@4.136.3 d1 create "$PREVIEW_DB_NAME" 2>&1)"
+            output="$(npx --yes wrangler@4.136.3 d1 create "$PREVIEW_DB_NAME" --binding DB --use-remote --update-config=false 2>&1)"
             printf '%s\n' "$output"
             db_id="$(printf '%s' "$output" | grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -n 1 || true)"
           fi
@@ -64,7 +64,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          npx --yes wrangler@4.136.3 d1 execute "$PREVIEW_DB_NAME" --remote --file=./schema.sql
+          for attempt in 1 2 3; do
+            if npx --yes wrangler@4.136.3 d1 execute "$PREVIEW_DB_NAME" --remote --yes --file=./schema.sql; then
+              exit 0
+            fi
+            echo "D1 schema apply attempt $attempt failed; retrying..."
+            sleep $((attempt * 2))
+          done
+          exit 1
 
       - name: Generate Preview Wrangler config
         env:
