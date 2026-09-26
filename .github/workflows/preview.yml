@@ -162,6 +162,25 @@ jobs:
           command: preview --name ${{ env.PREVIEW_NAME }} --config wrangler.preview.generated.jsonc
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Smoke test Preview readiness
+        if: steps.preview.outcome == 'success'
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.preview-url || steps.preview.outputs.preview-deployment-url }}
+        run: |
+          set -euo pipefail
+          test -n "$PREVIEW_URL"
+          response="$(curl --silent --show-error --retry 3 --retry-delay 2 \
+            --write-out '\n%{http_code}' \
+            "$PREVIEW_URL/ready")"
+
+          code="$(printf '%s' "$response" | tail -n 1)"
+          body="$(printf '%s' "$response" | sed '$d')"
+
+          echo "HTTP $code"
+          printf '%s\n' "$body"
+
+          test "$code" = "200"
+          printf '%s' "$body" | jq -e '.ok == true and .ready == true and .checks.controlPlane == true and .checks.previewDatabase == true'
       - name: Mark environment READY
         if: steps.preview.outcome == 'success'
         env:
