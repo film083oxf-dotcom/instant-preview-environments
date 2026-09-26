@@ -38,6 +38,7 @@ jobs:
       GC_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ttl_hours || '24' }}
       GC_FAILED_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.failed_ttl_hours || '6' }}
       GC_DELETE_STALE_OPEN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.delete_stale_open || 'false' }}
+      PROJECT_ID: instant-preview-environments
 
     steps:
       - name: Checkout default branch config
@@ -73,8 +74,9 @@ jobs:
           failed_ttl="${GC_FAILED_TTL_HOURS}"
 
           query="SELECT pr_number, status, updated_at
-            FROM environments
-            WHERE (
+            FROM project_environments
+            WHERE project_id = 'instant-preview-environments'
+            AND (
               status IN ('READY','FAILED')
               AND datetime(updated_at) < datetime('now','-' || ${normal_ttl} || ' hours')
             )
@@ -117,14 +119,14 @@ jobs:
               continue
             fi
 
-            row="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="SELECT commit_sha, database_name FROM environments WHERE pr_number=${pr} LIMIT 1;")"
+            row="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="SELECT commit_sha, database_name FROM project_environments WHERE project_id='instant-preview-environments' AND pr_number=${pr} LIMIT 1;")"
             database_name="$(printf '%s' "$row" | jq -r '[.[]?.results? // [] | .[]] | .[0].database_name // empty')"
             commit_sha="$(printf '%s' "$row" | jq -r '[.[]?.results? // [] | .[]] | .[0].commit_sha // empty')"
             database_name="${database_name:-instant-preview-pr-$pr}"
             commit_sha="${commit_sha:-unknown}"
 
             echo "Marking PR #$pr DELETING..."
-            node scripts/write-control-state.mjs /tmp/control-state.sql environment "$pr" DELETING "$commit_sha" "" "$database_name" ""
+            node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" "$pr" DELETING "$commit_sha" "" "$database_name" ""
             npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
             cleanup_failed="false"
@@ -155,13 +157,13 @@ jobs:
 
             if [ "$cleanup_failed" = "true" ]; then
               echo "GC cleanup failed for PR #$pr."
-              node scripts/write-control-state.mjs /tmp/control-state.sql environment "$pr" "DELETE FAILED" "$commit_sha" "" "$database_name" "Garbage collector cleanup failed."
+              node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" "$pr" "DELETE FAILED" "$commit_sha" "" "$database_name" "Garbage collector cleanup failed."
               npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
               continue
             fi
 
             echo "GC cleanup succeeded for PR #$pr."
-            node scripts/write-control-state.mjs /tmp/control-state.sql environment "$pr" DELETED "$commit_sha" "" "$database_name" ""
+            node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" "$pr" DELETED "$commit_sha" "" "$database_name" ""
             npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
           done <<< "$candidates"

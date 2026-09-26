@@ -1,7 +1,7 @@
 import { getDashboardData, renderDashboard } from "./dashboard.js";
-import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requireAuthorized } from "./auth.js";
+import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requirePlatformAuthorized, requireProjectAuthorized } from "./auth.js";
 import { requirePreviewAccess } from "./preview-auth.js";
-import { listMemberships, listProjectMemberships, grantMembership, revokeMembership, grantProjectMembership, revokeProjectMembership } from "./access-control.js";
+import { getProjectById, getProjectMembership, listAccessibleProjects, listMemberships, listProjectMemberships, grantMembership, revokeMembership, grantProjectMembership, revokeProjectMembership } from "./access-control.js";
 import { renderAccessPage, redirectBack } from "./access-page.js";
 
 export default {
@@ -148,20 +148,41 @@ async function handleRequest(request, env) {
       authorization = await requirePreviewAccess(request, env);
       if (authorization.response) return authorization.response;
     } else {
-      authorization = await requireAuthorized(request, env);
+      authorization = await requirePlatformAuthorized(request, env);
       if (authorization.response) return authorization.response;
     }
 
     if (url.pathname === "/api/me") {
+      const projectMembership = await getProjectMembership(
+        env.CONTROL_DB,
+        env.GITHUB_REPO,
+        authorization.session.githubId
+      );
+
       return Response.json({
         ok: true,
         user: authorization.session,
         access: {
           platform: authorization.membership,
-          project: authorization.projectMembership || null
+          project: projectMembership || null
         }
       }, {
         headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" }
+      });
+    }
+
+    if (url.pathname === "/api/projects") {
+      const projects = await listAccessibleProjects(
+        env.CONTROL_DB,
+        authorization.session.githubId,
+        authorization.membership.role
+      );
+
+      return Response.json({
+        ok: true,
+        projects
+      }, {
+        headers: { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" }
       });
     }
 
@@ -324,8 +345,25 @@ async function handleRequest(request, env) {
     }
 
     if (url.pathname === "/api/environments") {
+      const selectedProjectId = new URL(request.url).searchParams.get("project") || "instant-preview-environments";
+      const selectedProject = await getProjectById(env.CONTROL_DB, selectedProjectId);
+
+      if (!selectedProject || selectedProject.status !== "active") {
+        return Response.json(
+          { ok: false, error: "Project not found." },
+          { status: 404, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      const projectAuthorization = await requireProjectAuthorized(
+        request,
+        env,
+        selectedProject.repo_full_name
+      );
+      if (projectAuthorization.response) return projectAuthorization.response;
+
       try {
-        const data = await getDashboardData(env);
+        const data = await getDashboardData(env, selectedProject.project_id);
         return Response.json(data, {
           headers: {
             "Cache-Control": "private, no-store"
@@ -382,14 +420,48 @@ async function handleRequest(request, env) {
 
     if (url.pathname === "/" && env.ENVIRONMENT === "production") {
       try {
-        const data = await getDashboardData(env);
-        return new Response(renderDashboard(data, { ...authorization.session, role: authorization.membership.role }), {
-          headers: {
-            "content-type": "text/html; charset=UTF-8",
-            "cache-control": "private, no-store",
-            "x-robots-tag": "noindex"
+        const selectedProjectId = new URL(request.url).searchParams.get("project") || "instant-preview-environments";
+        const selectedProject = await getProjectById(env.CONTROL_DB, selectedProjectId);
+
+        if (!selectedProject || selectedProject.status !== "active") {
+          return new Response("Project not found.", {
+            status: 404,
+            headers: {
+              "content-type": "text/plain; charset=UTF-8",
+              "cache-control": "no-store"
+            }
+          });
+        }
+
+        const projectAuthorization = await requireProjectAuthorized(
+          request,
+          env,
+          selectedProject.repo_full_name
+        );
+        if (projectAuthorization.response) return projectAuthorization.response;
+
+        const projects = await listAccessibleProjects(
+          env.CONTROL_DB,
+          authorization.session.githubId,
+          authorization.membership.role
+        );
+
+        const data = await getDashboardData(env, selectedProject.project_id);
+
+        return new Response(
+          renderDashboard(
+            data,
+            { ...authorization.session, role: authorization.membership.role },
+            projects
+          ),
+          {
+            headers: {
+              "content-type": "text/html; charset=UTF-8",
+              "cache-control": "private, no-store",
+              "x-robots-tag": "noindex"
+            }
           }
-        });
+        );
       } catch (error) {
         return new Response(
           "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Dashboard Error</title></head><body style='font-family:system-ui;padding:40px;background:#080c16;color:#eef2ff'><h1>Dashboard temporarily unavailable</h1><p>Control-plane D1 could not be read right now.</p><pre>" +

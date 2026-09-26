@@ -97,3 +97,38 @@ SELECT
   updated_at,
   COALESCE(granted_by, 'migration:phase7')
 FROM memberships;
+
+CREATE TABLE IF NOT EXISTS project_environments (
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  commit_sha TEXT,
+  preview_url TEXT,
+  database_name TEXT,
+  ai_status TEXT,
+  updated_at TEXT NOT NULL,
+  last_error TEXT,
+  PRIMARY KEY (project_id, pr_number),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_environments_updated_at
+  ON project_environments(updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_project_environments_status
+  ON project_environments(project_id, status);
+
+INSERT OR IGNORE INTO project_environments (
+  project_id, pr_number, status, commit_sha, preview_url, database_name, ai_status, updated_at, last_error
+)
+SELECT
+  'instant-preview-environments',
+  pr_number,
+  status,
+  commit_sha,
+  preview_url,
+  database_name,
+  ai_status,
+  updated_at,
+  last_error
+FROM environments;

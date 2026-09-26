@@ -34,6 +34,34 @@ export async function ensureOwnerMembership(db, user, githubRepo) {
   return getMembership(db, user.githubId);
 }
 
+export async function getProjectById(db, projectId) {
+  if (!db) throw new Error("CONTROL_DB binding is not configured.");
+
+  return db.prepare(
+    "SELECT project_id, repo_full_name, name, status, created_at, updated_at FROM projects WHERE project_id = ?"
+  ).bind(String(projectId)).first();
+}
+
+export async function listAccessibleProjects(db, githubId, role) {
+  if (!db) throw new Error("CONTROL_DB binding is not configured.");
+
+  if (role === "admin") {
+    const { results } = await db.prepare(
+      "SELECT project_id, repo_full_name, name, status, created_at, updated_at FROM projects WHERE status = 'active' ORDER BY LOWER(name)"
+    ).all();
+    return results || [];
+  }
+
+  const { results } = await db.prepare(
+    "SELECT p.project_id, p.repo_full_name, p.name, p.status, p.created_at, p.updated_at " +
+    "FROM projects p INNER JOIN project_memberships pm ON pm.project_id = p.project_id " +
+    "WHERE p.status = 'active' AND pm.github_id = ? AND pm.status = 'active' " +
+    "ORDER BY LOWER(p.name)"
+  ).bind(Number(githubId)).all();
+
+  return results || [];
+}
+
 export async function getProject(db, repoFullName) {
   if (!db) throw new Error("CONTROL_DB binding is not configured.");
 

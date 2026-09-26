@@ -18,6 +18,7 @@ jobs:
       PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
       PREVIEW_DB_NAME: instant-preview-pr-${{ github.event.pull_request.number }}
       CONTROL_DB_NAME: instant-preview-control-plane
+      PROJECT_ID: instant-preview-environments
 
     steps:
       - name: Checkout PR head
@@ -73,7 +74,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          node scripts/write-control-state.mjs /tmp/control-state.sql environment ${{ github.event.pull_request.number }} BUILDING ${{ github.event.pull_request.head.sha }} "" "$PREVIEW_DB_NAME" ""
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" ${{ github.event.pull_request.number }} BUILDING ${{ github.event.pull_request.head.sha }} "" "$PREVIEW_DB_NAME" ""
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
       - name: Provision isolated D1 database
@@ -189,7 +190,7 @@ jobs:
           PREVIEW_URL: ${{ steps.preview.outputs.preview-url || steps.preview.outputs.preview-deployment-url }}
         run: |
           set -euo pipefail
-          node scripts/write-control-state.mjs /tmp/control-state.sql environment ${{ github.event.pull_request.number }} READY ${{ github.event.pull_request.head.sha }} "$PREVIEW_URL" "$PREVIEW_DB_NAME" ""
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" ${{ github.event.pull_request.number }} READY ${{ github.event.pull_request.head.sha }} "$PREVIEW_URL" "$PREVIEW_DB_NAME" ""
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
       - name: Comment on PR
@@ -257,5 +258,5 @@ jobs:
           ERROR_MESSAGE: Preview workflow failed before a ready deployment was produced.
         run: |
           set +e
-          node scripts/write-control-state.mjs /tmp/control-state.sql environment ${{ github.event.pull_request.number }} FAILED ${{ github.event.pull_request.head.sha }} "" "$PREVIEW_DB_NAME" "$ERROR_MESSAGE"
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" ${{ github.event.pull_request.number }} FAILED ${{ github.event.pull_request.head.sha }} "" "$PREVIEW_DB_NAME" "$ERROR_MESSAGE"
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
