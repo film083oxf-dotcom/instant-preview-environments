@@ -90,6 +90,14 @@ Phase 8 adds lightweight operational visibility:
 - /health remains a public liveness endpoint
 - /ready checks the central control-plane D1, and Preview also checks its isolated D1
 - Production and Preview workflows smoke-test /ready after deployment
+## Phase 9 — Multi-project dashboard
+
+Phase 9 makes the dashboard project-aware:
+- each project has its own environment state in central D1
+- dashboard lists only projects the signed-in user can access
+- the project selector switches dashboard data without changing GitHub identity
+- Preview lifecycle, cleanup, GC and AI diagnosis write state with a project key
+- the legacy `environments` table remains mirrored for backward compatibility while `project_environments` is the multi-project source of truth
 ## Local
 
 ```bash
