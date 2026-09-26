@@ -380,14 +380,18 @@ export async function getSession(request, signingKey) {
   const raw = getCookie(request.headers.get("Cookie"), SESSION_COOKIE);
   if (!raw) return null;
 
-  const data = await verifyObject(raw, signingKey);
-  if (!data || data.exp < Math.floor(Date.now() / 1000)) return null;
+  try {
+    const data = await verifyObject(raw, signingKey);
+    if (!data || data.exp < Math.floor(Date.now() / 1000)) return null;
 
-  return {
-    githubId: data.githubId,
-    login: data.login,
-    avatarUrl: data.avatarUrl || null
-  };
+    return {
+      githubId: data.githubId,
+      login: data.login,
+      avatarUrl: data.avatarUrl || null
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function createSession(user, signingKey) {
@@ -599,7 +603,13 @@ function getCookie(header, name) {
     const key = cookie.slice(0, separator);
     const value = cookie.slice(separator + 1);
 
-    if (key === name) return decodeURIComponent(value);
+    if (key === name) {
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return null;
+      }
+    }
   }
 
   return null;

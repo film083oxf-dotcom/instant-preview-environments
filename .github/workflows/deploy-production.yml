@@ -98,6 +98,24 @@ jobs:
 
           test "$code" = "200"
           printf '%s' "$body" | jq -e '.ok == true and .ready == true and .checks.controlPlane == true'
+      - name: Smoke test GitHub authentication entry
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --retry 3 --retry-delay 2 \\
+            --dump-header - --output /dev/null \\
+            --write-out '%{http_code}' \\
+            https://instant-preview-environments.film083oxf.workers.dev/auth/login)"
+
+          code="$(printf '%s' "$response" | tail -n 1)"
+          headers="$(printf '%s' "$response" | sed '$d')"
+
+          echo "HTTP $code"
+          printf '%s\\n' "$headers"
+
+          test "$code" = "302"
+          printf '%s\\n' "$headers" | grep -i '^location: https://github.com/login/oauth/authorize'
+          printf '%s\\n' "$headers" | grep -i '^set-cookie: ipe_oauth_state='
+
       - name: Smoke test protected dashboard
         run: |
           set -euo pipefail
