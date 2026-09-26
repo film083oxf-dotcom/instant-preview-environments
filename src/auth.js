@@ -536,9 +536,11 @@ function serializeCookie(name, value, maxAge, httpOnly) {
 }
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\function joinCookies(...cookies) {
-  return cookies.join(", ");
-}");
+  const specials = "^$\\.*+?()[]{}|";
+  return value
+    .split("")
+    .map(char => specials.includes(char) ? "\\" + char : char)
+    .join("");
 }
 
 function noStoreHeaders() {
