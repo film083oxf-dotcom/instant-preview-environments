@@ -108,6 +108,15 @@ Phase 10 adds project-level capacity controls:
 - admins can view and update quotas from `/access`
 - the dashboard shows current resource usage and capacity
 
+## Phase 11 — Provider Abstraction
+
+Phase 11 isolates infrastructure-provider logic behind a small adapter interface:
+- workflows call `scripts/provider-cli.mjs` for database provisioning/deletion and production deployment
+- `scripts/provider.mjs` selects the configured provider (`cloudflare` by default)
+- Cloudflare-specific API and Wrangler operations live in `scripts/providers/cloudflare.mjs`
+- the control-plane, authorization, dashboard, and project resource model stay provider-neutral
+- adding another provider becomes an adapter task instead of rewriting the control-plane authorization model
+
 ## Local
 
 ```bash
