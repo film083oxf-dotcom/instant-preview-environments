@@ -2,6 +2,7 @@ import { getDashboardData, renderDashboard } from "./dashboard.js";
 import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requirePlatformAuthorized, requireProjectAuthorized } from "./auth.js";
 import { requirePreviewAccess } from "./preview-auth.js";
 import { getProjectById, getProjectMembership, listAccessibleProjects, listMemberships, listProjectMemberships, grantMembership, revokeMembership, grantProjectMembership, revokeProjectMembership } from "./access-control.js";
+import { listAuditEvents } from "./audit-log.js";
 import { renderAccessPage, redirectBack } from "./access-page.js";
 import { getProjectQuota, getProjectResourceUsage, updateProjectQuota } from "./resource-control.js";
 
@@ -13,6 +14,7 @@ export default {
     try {
       const response = await handleRequest(request, env);
       response.headers.set("X-Request-Id", requestId);
+      applySecurityHeaders(response);
 
       console.log(JSON.stringify({
         event: "request.completed",
@@ -196,11 +198,12 @@ async function handleRequest(request, env) {
       }
 
       const currentProject = await getProjectById(env.CONTROL_DB, "instant-preview-environments");
-      const [memberships, projectMemberships, quota, resourceUsage] = await Promise.all([
+      const [memberships, projectMemberships, quota, resourceUsage, auditEvents] = await Promise.all([
         listMemberships(env.CONTROL_DB),
         listProjectMemberships(env.CONTROL_DB, env.GITHUB_REPO),
         getProjectQuota(env.CONTROL_DB, currentProject?.project_id || "instant-preview-environments"),
-        getProjectResourceUsage(env.CONTROL_DB, currentProject?.project_id || "instant-preview-environments")
+        getProjectResourceUsage(env.CONTROL_DB, currentProject?.project_id || "instant-preview-environments"),
+        listAuditEvents(env.CONTROL_DB, 100)
       ]);
 
       return new Response(renderAccessPage({
@@ -209,7 +212,8 @@ async function handleRequest(request, env) {
         memberships,
         projectMemberships,
         quota,
-        resourceUsage
+        resourceUsage,
+        auditEvents
       }), {
         headers: {
           "content-type": "text/html; charset=UTF-8",
@@ -217,6 +221,20 @@ async function handleRequest(request, env) {
           "x-robots-tag": "noindex"
         }
       });
+    }
+
+    if (url.pathname === "/api/audit" && env.ENVIRONMENT === "production") {
+      if (authorization.membership.role !== "admin") {
+        return Response.json(
+          { ok: false, error: "Admin access required." },
+          { status: 403, headers: { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } }
+        );
+      }
+
+      return Response.json(
+        { ok: true, events: await listAuditEvents(env.CONTROL_DB, 200) },
+        { headers: { "Cache-Control": "private, no-store", "X-Robots-Tag": "noindex" } }
+      );
     }
 
     if (url.pathname === "/api/access/grant" && request.method === "POST") {
@@ -587,4 +605,13 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+
+function applySecurityHeaders(response) {
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
 }
