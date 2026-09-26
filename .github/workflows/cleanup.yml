@@ -54,7 +54,7 @@ jobs:
           printf '%s\n' "$db_output"
 
           if [ "$db_status" -ne 0 ]; then
-            if grep -Eiq "not found|does not exist|No database|could not find" <<< "$db_output"; then
+            if grep -Eiq "not found|does not exist|No database|could not find|Couldn't find a D1 DB|Couldn't find.*D1" <<< "$db_output"; then
               echo "D1 $PREVIEW_DB_NAME does not exist. Nothing to delete."
               exit 0
             fi
