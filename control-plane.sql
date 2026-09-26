@@ -118,6 +118,36 @@ CREATE INDEX IF NOT EXISTS idx_project_environments_updated_at
 CREATE INDEX IF NOT EXISTS idx_project_environments_status
   ON project_environments(project_id, status);
 
+
+CREATE TABLE IF NOT EXISTS project_quotas (
+  project_id TEXT PRIMARY KEY,
+  max_active_environments INTEGER NOT NULL DEFAULT 10 CHECK (max_active_environments >= 1),
+  max_active_databases INTEGER NOT NULL DEFAULT 10 CHECK (max_active_databases >= 1),
+  max_concurrent_builds INTEGER NOT NULL DEFAULT 3 CHECK (max_concurrent_builds >= 1),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+INSERT OR IGNORE INTO project_quotas (
+  project_id, max_active_environments, max_active_databases, max_concurrent_builds, created_at, updated_at
+) VALUES (
+  'instant-preview-environments', 10, 10, 3, datetime('now'), datetime('now')
+);
+
+CREATE TABLE IF NOT EXISTS project_resource_reservations (
+  project_id TEXT NOT NULL,
+  pr_number INTEGER NOT NULL,
+  reservation_type TEXT NOT NULL CHECK (reservation_type IN ('preview_environment')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, pr_number),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_resource_reservations_expiry
+  ON project_resource_reservations(project_id, expires_at);
+
 INSERT OR IGNORE INTO project_environments (
   project_id, pr_number, status, commit_sha, preview_url, database_name, ai_status, updated_at, last_error
 )
