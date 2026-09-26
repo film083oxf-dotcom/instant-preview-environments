@@ -46,3 +46,54 @@ CREATE INDEX IF NOT EXISTS idx_memberships_status
 
 CREATE INDEX IF NOT EXISTS idx_memberships_role
   ON memberships(role);
+
+CREATE TABLE IF NOT EXISTS projects (
+  project_id TEXT PRIMARY KEY,
+  repo_full_name TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'archived')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_status
+  ON projects(status);
+
+INSERT OR IGNORE INTO projects (
+  project_id, repo_full_name, name, status, created_at, updated_at
+) VALUES (
+  'instant-preview-environments',
+  'film083oxf-dotcom/instant-preview-environments',
+  'Instant Preview Environments',
+  'active',
+  datetime('now'),
+  datetime('now')
+);
+
+CREATE TABLE IF NOT EXISTS project_memberships (
+  project_id TEXT NOT NULL,
+  github_id INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  granted_by TEXT,
+  PRIMARY KEY (project_id, github_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_memberships_status
+  ON project_memberships(project_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_project_memberships_github
+  ON project_memberships(github_id);
+
+INSERT OR IGNORE INTO project_memberships (
+  project_id, github_id, status, created_at, updated_at, granted_by
+)
+SELECT
+  'instant-preview-environments',
+  github_id,
+  status,
+  created_at,
+  updated_at,
+  COALESCE(granted_by, 'migration:phase7')
+FROM memberships;
