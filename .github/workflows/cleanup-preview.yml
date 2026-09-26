@@ -44,19 +44,19 @@ jobs:
       - name: Resolve database branch identifiers
         id: ids
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CONTROL_DB_NAME: \${{ env.CONTROL_DB_NAME }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CONTROL_DB_NAME: ${{ env.CONTROL_DB_NAME }}
         run: |
           set -euo pipefail
 
-          result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT commit_sha, database_name FROM project_environments WHERE project_id = 'instant-preview-environments' AND pr_number = \${PR_NUMBER} LIMIT 1;")"
+          result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT commit_sha, database_name FROM project_environments WHERE project_id = 'instant-preview-environments' AND pr_number = ${PR_NUMBER} LIMIT 1;")"
           row="$(printf '%s' "$result" | jq -c '[.[]?.results? // [] | .[]] | .[0] // empty')"
 
           db_name="$(jq -r '.database_name // empty' <<<"$row")"
-          sha="\${{ github.event.pull_request.head.sha }}"
+          sha="${{ github.event.pull_request.head.sha }}"
 
-          branch_result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT provider, branch_id, branch_name, database_name FROM database_branches WHERE project_id='instant-preview-environments' AND pr_number=\${PR_NUMBER} ORDER BY updated_at DESC LIMIT 1;")"
+          branch_result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT provider, branch_id, branch_name, database_name FROM database_branches WHERE project_id='instant-preview-environments' AND pr_number=${PR_NUMBER} ORDER BY updated_at DESC LIMIT 1;")"
           branch_row="$(printf '%s' "$branch_result" | jq -c '[.[]?.results? // [] | .[]] | .[0] // empty')"
 
           provider="$(jq -r '.provider // empty' <<<"$branch_row")"
@@ -64,16 +64,16 @@ jobs:
           branch_name="$(jq -r '.branch_name // empty' <<<"$branch_row")"
           branch_database="$(jq -r '.database_name // empty' <<<"$branch_row")"
 
-          provider="\${provider:-$DATABASE_PROVIDER}"
-          branch_id="\${branch_id:-}"
-          branch_name="\${branch_name:-$db_name}"
-          branch_database="\${branch_database:-$db_name}"
+          provider="${provider:-$DATABASE_PROVIDER}"
+          branch_id="${branch_id:-}"
+          branch_name="${branch_name:-$db_name}"
+          branch_database="${branch_database:-$db_name}"
 
-          echo "database_name=\${branch_database:-instant-preview-pr-\$PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "database_name=${branch_database:-instant-preview-pr-$PR_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "branch_provider=$provider" >> "$GITHUB_OUTPUT"
           echo "branch_id=$branch_id" >> "$GITHUB_OUTPUT"
           echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
-          echo "head_sha=\${sha:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${sha:-unknown}" >> "$GITHUB_OUTPUT"
 
       - name: Release preview resource reservation
         env:
@@ -97,9 +97,9 @@ jobs:
       - name: Delete Preview and isolated database branch
         id: cleanup
         env:
-          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          DATABASE_PROVIDER: \${{ steps.ids.outputs.branch_provider }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATABASE_PROVIDER: ${{ steps.ids.outputs.branch_provider }}
         run: |
           set -euo pipefail
 
@@ -112,13 +112,13 @@ jobs:
 
           echo "=== Delete database branch: $DATABASE_PROVIDER ==="
           if [ "$DATABASE_PROVIDER" = "neon" ]; then
-            db_output="$(node scripts/database-branch-cli.mjs delete --branch-id "\${{ steps.ids.outputs.branch_id }}")"
+            db_output="$(node scripts/database-branch-cli.mjs delete --branch-id "${{ steps.ids.outputs.branch_id }}")"
           else
-            db_output="$(node scripts/database-branch-cli.mjs delete --name "\${{ steps.ids.outputs.database_name }}")"
+            db_output="$(node scripts/database-branch-cli.mjs delete --name "${{ steps.ids.outputs.database_name }}")"
           fi
           printf '%s\n' "$db_output"
 
-          echo "Cleanup completed for $PREVIEW_NAME and \${{ steps.ids.outputs.database_name }}."
+          echo "Cleanup completed for $PREVIEW_NAME and ${{ steps.ids.outputs.database_name }}."
 
 
 
