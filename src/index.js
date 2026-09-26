@@ -1,7 +1,6 @@
 import { getDashboardData, renderDashboard } from "./dashboard.js";
 import { handleAuthCallback, handleAuthExchange, handleAuthLogin, handleAuthLogout, requireAuthenticated } from "./auth.js";
 import { requirePreviewAccess } from "./preview-auth.js";
-import { requirePreviewAccess } from "./preview-auth.js";
 
 export default {
   async fetch(request, env) {
@@ -25,9 +24,6 @@ export default {
         }
       });
     }
-
-    const accessDenied = await requirePreviewAccess(request, env);
-    if (accessDenied) return accessDenied;
 
     if (env.ENVIRONMENT === "preview") {
       const denied = await requirePreviewAccess(request, env);
