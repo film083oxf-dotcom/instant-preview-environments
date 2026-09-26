@@ -5,3 +5,4 @@ node_modules/
 preview-output.json
 logs/
 ai-diagnosis.txt
+\nwrangler.preview.generated.jsonc\n
