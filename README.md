@@ -53,8 +53,8 @@ Token ของ Cloudflare ต้องมีสิทธิ์ Workers ที�
 
 ต้องตั้งค่า GitHub App และเพิ่ม GitHub Actions secrets ต่อไปนี้:
 
-- `GITHUB_CLIENT_ID`
-- `GITHUB_CLIENT_SECRET`
+- `AUTH_GITHUB_CLIENT_ID`
+- `AUTH_GITHUB_CLIENT_SECRET`
 - `SESSION_SIGNING_KEY`
 
 อย่าใส่ค่า secret เหล่านี้ลงใน repository. Cloudflare Wrangler รองรับ secrets แยกจาก vars และ Preview Base configuration สามารถแชร์ secret ไปยัง Preview ใหม่แต่ละตัวได้
