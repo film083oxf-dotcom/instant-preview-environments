@@ -20,3 +20,17 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.136.3"
           command: deploy
+
+      - name: Smoke test production dashboard
+        run: |
+          set -euo pipefail
+
+          echo "Checking dashboard API..."
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
+            https://instant-preview-environments.film083oxf.workers.dev/api/environments \
+            -o /tmp/dashboard.json
+
+          jq -e '.repository == "film083oxf-dotcom/instant-preview-environments"' /tmp/dashboard.json
+          jq -e '.summary | has("active") and has("ready") and has("failed")' /tmp/dashboard.json
+
+          echo "Dashboard smoke test passed."
