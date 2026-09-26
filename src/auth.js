@@ -1,4 +1,4 @@
-import { ensureOwnerMembership, getMembership, isActiveMember } from "./access-control.js";
+import { ensureOwnerMembership, getMembership, getProjectMembership, isActiveMember, isActiveProjectMember } from "./access-control.js";
 
 const SESSION_COOKIE = "ipe_session";
 const OAUTH_STATE_COOKIE = "ipe_oauth_state";
@@ -307,31 +307,57 @@ export async function requireAuthorized(request, env) {
   }
 
   if (!isActiveMember(membership)) {
-    const accept = request.headers.get("Accept") || "";
+    return accessDenied(
+      request,
+      "Your GitHub account is authenticated, but it is not a member of this Preview Platform.",
+      "An administrator must grant platform access before you can use this Preview Platform.",
+      "Authenticated account is not authorized for this platform."
+    );
+  }
 
-    if (accept.includes("text/html")) {
-      return {
-        response: new Response(
-          "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Access denied</title></head><body style='font-family:system-ui;max-width:720px;margin:80px auto;padding:24px;background:#080c16;color:#eef2ff'><h1>Access denied</h1><p>Your GitHub account is authenticated, but it is not a member of this platform.</p><p>An administrator must grant your account access before you can use this Preview Platform.</p><p><a href='/auth/logout' style='color:#9db3e6'>Sign out</a></p></body></html>",
-          { status: 403, headers: noStoreHeaders() }
-        )
-      };
-    }
+  const projectMembership = await getProjectMembership(
+    env.CONTROL_DB,
+    env.GITHUB_REPO,
+    auth.session.githubId
+  );
 
+  if (membership.role !== "admin" && !isActiveProjectMember(projectMembership)) {
+    return accessDenied(
+      request,
+      "Your GitHub account has platform access, but it is not a member of this project.",
+      "An administrator must grant project access before you can use this environment.",
+      "Authenticated account is not authorized for this project."
+    );
+  }
+
+  return {
+    session: auth.session,
+    membership,
+    projectMembership
+  };
+}
+
+function accessDenied(request, heading, detail, apiMessage) {
+  const accept = request.headers.get("Accept") || "";
+
+  if (accept.includes("text/html")) {
     return {
-      response: Response.json(
-        {
-          ok: false,
-          error: "Authenticated account is not authorized for this platform."
-        },
+      response: new Response(
+        "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Access denied</title></head><body style='font-family:system-ui;max-width:720px;margin:80px auto;padding:24px;background:#080c16;color:#eef2ff'><h1>Access denied</h1><p>" +
+        escapeHtml(heading) +
+        "</p><p>" +
+        escapeHtml(detail) +
+        "</p><p><a href='/auth/logout' style='color:#9db3e6'>Sign out</a></p></body></html>",
         { status: 403, headers: noStoreHeaders() }
       )
     };
   }
 
   return {
-    session: auth.session,
-    membership
+    response: Response.json(
+      { ok: false, error: apiMessage },
+      { status: 403, headers: noStoreHeaders() }
+    )
   };
 }
 
