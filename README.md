@@ -98,6 +98,16 @@ Phase 9 makes the dashboard project-aware:
 - the project selector switches dashboard data without changing GitHub identity
 - Preview lifecycle, cleanup, GC and AI diagnosis write state with a project key
 - the legacy `environments` table remains mirrored for backward compatibility while `project_environments` is the multi-project source of truth
+## Phase 10 — Resource Management
+
+Phase 10 adds project-level capacity controls:
+- `project_quotas` stores maximum active environments, maximum active databases, and maximum concurrent builds
+- Preview provisioning acquires a short-lived D1 resource reservation before creating/updating infrastructure
+- reservations expire after 30 minutes and are also purged by the garbage collector
+- existing Preview Environments stay usable when a new deployment is blocked by quota
+- admins can view and update quotas from `/access`
+- the dashboard shows current resource usage and capacity
+
 ## Local
 
 ```bash
