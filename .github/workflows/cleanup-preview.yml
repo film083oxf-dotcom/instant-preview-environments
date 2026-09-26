@@ -88,16 +88,14 @@ jobs:
 
           echo "=== Delete Preview: $PREVIEW_NAME ==="
           preview_output="$(node scripts/provider-cli.mjs delete-preview --name "$PREVIEW_NAME")"
-          printf '%s
-' "$preview_output"
+          printf '%s\\n' "$preview_output"
 
           preview_not_found="$(printf '%s' "$preview_output" | jq -r '.notFound // false')"
           test "$preview_not_found" = "false" || echo "Preview $PREVIEW_NAME was already absent."
 
           echo "=== Delete isolated D1: $PREVIEW_DB_NAME ==="
           db_output="$(node scripts/provider-cli.mjs delete-db --name "$PREVIEW_DB_NAME")"
-          printf '%s
-' "$db_output"
+          printf '%s\\n' "$db_output"
 
           db_not_found="$(printf '%s' "$db_output" | jq -r '.notFound // false')"
           test "$db_not_found" = "false" || echo "D1 $PREVIEW_DB_NAME was already absent."
