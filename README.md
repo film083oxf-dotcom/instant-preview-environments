@@ -1,33 +1,57 @@
 # Instant On-Demand Preview Environments — MVP
 
-MVP นี้ใช้ **Cloudflare Workers Previews + GitHub Actions** เป็นแกนกลาง
+ระบบนี้ใช้ **Cloudflare Workers Previews + GitHub Actions + D1 + Gemini** เป็นแกนกลาง
 
 ## ทำอะไรได้แล้ว
 
 1. เปิด PR → สร้าง Preview ชื่อ `pr-<PR_NUMBER>`
 2. ได้ Preview URL สำหรับ PR
 3. Push commit ใหม่ → อัปเดต Preview เดิม
-4. PR ปิด → ลบ Preview ด้วย `wrangler preview delete`
-5. ถ้า workflow ล้มเหลว → ให้ Gemini ช่วยวิเคราะห์ log (optional)
+4. แต่ละ PR มี D1 database แยกชื่อ `instant-preview-pr-<PR_NUMBER>`
+5. PR ปิด → ลบ Preview และ D1 อัตโนมัติ
+6. Preview fail → Gemini วิเคราะห์ workflow log และคอมเมนต์กลับเข้า PR
+7. มี **Instant Preview Dashboard** สำหรับดูสถานะ Preview, D1 และ AI diagnosis
+8. Dashboard ใช้ **central D1 control plane** ไม่พึ่ง GitHub API ใน runtime
 
-Cloudflare Workers Previews ปัจจุบันสร้าง environment แยกต่อ branch/PR, มี Preview URL ที่ชี้ไป deployment ล่าสุด และมีคำสั่งลบ Preview โดยตรง
+## Architecture
 
-## ก่อนใช้งาน
+```
+Pull Request
+    |
+    v
+GitHub Actions
+    |
+    +--> Central D1 control plane
+    |      |
+    |      +--> BUILDING / READY / FAILED
+    |      +--> DELETING / DELETED
+    |      +--> AI diagnosis state
+    |
+    +--> Preview Worker: pr-<PR>
+    |      |
+    |      +--> Isolated D1: instant-preview-pr-<PR>
+    |      +--> Preview URL
+    |
+    +--> Gemini diagnosis on failure
+    |
+    v
+Instant Preview Dashboard
+```
 
-ต้องมี:
-- GitHub repository
-- Cloudflare account ที่เปิด Workers
-- Node.js 22+ สำหรับ local development
+## GitHub Secrets
 
-สร้าง GitHub repository secrets:
-
+Required:
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-สำหรับ AI เพิ่ม:
+AI:
 - `GEMINI_API_KEY`
 
-> MVP นี้ตั้งใจไม่แจก Cloudflare secrets ให้ fork PR โดย workflow จะทำงานเฉพาะ PR ที่มาจาก repository เดียวกัน เพื่อหลีกเลี่ยงการเอา secret ไปอยู่ใน untrusted code path
+Token ของ Cloudflare ต้องมีสิทธิ์ Workers ที่ใช้อยู่เดิม และ **D1 Edit** สำหรับจัดการฐานข้อมูล Preview/control plane
+
+## Security boundary
+
+Preview workflow ทำงานเฉพาะ PR ที่มาจาก repository เดียวกัน เพื่อไม่ให้ fork PR เข้าถึง Cloudflare secrets
 
 ## Local
 
@@ -37,24 +61,18 @@ npm run typecheck
 npm run dev
 ```
 
-สร้าง Preview local/remote:
+## Dashboard
 
-```bash
-npx wrangler preview --name demo-preview
-```
+Production Worker:
+`https://instant-preview-environments.film083oxf.workers.dev`
 
-ลบ:
+Dashboard state เก็บใน central D1 ชื่อ `instant-preview-control-plane`
 
-```bash
-npx wrangler preview delete --name demo-preview --skip-confirmation
-```
+## Next phases
 
-## ขั้นต่อไป
-
-- Dashboard แสดง PR / Environment / Status
-- เก็บ state ลง D1 หรือ Postgres
-- TTL เช่น auto-delete หลังไม่มี activity
-- Preview-safe database branching ด้วย Neon
-- AI วิเคราะห์ build/runtime error แบบอัตโนมัติ
-- Access control สำหรับ Preview ที่ไม่ควรเปิดสาธารณะ
-- รองรับหลาย provider ในอนาคต
+- TTL / garbage collection engine
+- Authentication / access control สำหรับ Preview
+- Runtime logs และ health checks
+- Multi-project dashboard
+- Database branching สำหรับ Postgres/Neon
+- Resource quotas และ provider abstraction
