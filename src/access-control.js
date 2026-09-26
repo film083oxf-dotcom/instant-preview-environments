@@ -69,7 +69,10 @@ export async function getProject(db, repoFullName) {
     "SELECT project_id, repo_full_name, name, status, created_at, updated_at FROM projects WHERE repo_full_name = ?"
   ).bind(String(repoFullName)).first();
 
-  if (row) return row;
+  if (row) {
+    await ensureProjectQuota(db, row.project_id);
+    return row;
+  }
 
   const projectId = projectIdForRepo(repoFullName);
   const now = new Date().toISOString();
@@ -85,9 +88,20 @@ export async function getProject(db, repoFullName) {
     now
   ).run();
 
-  return db.prepare(
+  const project = await db.prepare(
     "SELECT project_id, repo_full_name, name, status, created_at, updated_at FROM projects WHERE repo_full_name = ?"
   ).bind(String(repoFullName)).first();
+
+  if (project) await ensureProjectQuota(db, project.project_id);
+  return project;
+}
+
+async function ensureProjectQuota(db, projectId) {
+  const now = new Date().toISOString();
+  await db.prepare(
+    "INSERT OR IGNORE INTO project_quotas (project_id, max_active_environments, max_active_databases, max_concurrent_builds, created_at, updated_at) " +
+    "VALUES (?, 10, 10, 3, ?, ?)"
+  ).bind(String(projectId), now, now).run();
 }
 
 export async function getProjectMembership(db, repoFullName, githubId) {
