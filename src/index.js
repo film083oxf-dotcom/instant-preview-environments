@@ -194,7 +194,6 @@ export default {
     if (url.pathname === "/" && env.ENVIRONMENT === "production") {
       try {
         const data = await getDashboardData(env);
-        const auth = await requireAuthenticated(request, env);
         return new Response(renderDashboard(data, { ...authorization.session, role: authorization.membership.role }), {
           headers: {
             "content-type": "text/html; charset=UTF-8",
