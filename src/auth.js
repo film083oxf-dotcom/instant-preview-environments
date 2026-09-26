@@ -187,6 +187,13 @@ export async function handleAuthCallback(request, env) {
 }
 
 export async function handleAuthExchange(request, env) {
+  if (!env.SESSION_SIGNING_KEY || !env.CONTROL_DB) {
+    return new Response("Preview authentication is not configured.", {
+      status: 503,
+      headers: noStoreHeaders()
+    });
+  }
+
   const ticket = new URL(request.url).searchParams.get("ticket");
 
   if (!ticket) {
@@ -278,6 +285,8 @@ export async function requireAuthenticated(request, env) {
 }
 
 export async function getSession(request, signingKey) {
+  if (!signingKey) return null;
+
   const raw = getCookie(request.headers.get("Cookie"), SESSION_COOKIE);
   if (!raw) return null;
 
