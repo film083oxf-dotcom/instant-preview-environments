@@ -1,4 +1,5 @@
-const ROLE_VALUES = ["admin", "member"];
+const PLATFORM_ROLE_VALUES = ["admin", "member"];
+const PROJECT_ID = "instant-preview-environments";
 
 export async function getMembership(db, githubId) {
   if (!db) throw new Error("CONTROL_DB binding is not configured.");
@@ -33,6 +34,43 @@ export async function ensureOwnerMembership(db, user, githubRepo) {
   return getMembership(db, user.githubId);
 }
 
+export async function getProject(db, repoFullName) {
+  if (!db) throw new Error("CONTROL_DB binding is not configured.");
+
+  const row = await db.prepare(
+    "SELECT project_id, repo_full_name, name, status, created_at, updated_at FROM projects WHERE repo_full_name = ?"
+  ).bind(String(repoFullName)).first();
+
+  if (row) return row;
+
+  const projectId = projectIdForRepo(repoFullName);
+  const now = new Date().toISOString();
+
+  await db.prepare(
+    "INSERT INTO projects (project_id, repo_full_name, name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?) " +
+    "ON CONFLICT(repo_full_name) DO UPDATE SET updated_at = excluded.updated_at"
+  ).bind(
+    projectId,
+    String(repoFullName),
+    projectNameForRepo(repoFullName),
+    now,
+    now
+  ).run();
+
+  return db.prepare(
+    "SELECT project_id, repo_full_name, name, status, created_at, updated_at FROM projects WHERE repo_full_name = ?"
+  ).bind(String(repoFullName)).first();
+}
+
+export async function getProjectMembership(db, repoFullName, githubId) {
+  const project = await getProject(db, repoFullName);
+  if (!project) return null;
+
+  return db.prepare(
+    "SELECT project_id, github_id, status, created_at, updated_at, granted_by FROM project_memberships WHERE project_id = ? AND github_id = ?"
+  ).bind(project.project_id, Number(githubId)).first();
+}
+
 export async function listMemberships(db) {
   if (!db) throw new Error("CONTROL_DB binding is not configured.");
 
@@ -45,11 +83,25 @@ export async function listMemberships(db) {
   return results || [];
 }
 
+export async function listProjectMemberships(db, repoFullName) {
+  const project = await getProject(db, repoFullName);
+  if (!project) return [];
+
+  const { results } = await db.prepare(
+    "SELECT pm.project_id, pm.github_id, u.login, u.avatar_url, pm.status, pm.created_at, pm.updated_at, pm.granted_by " +
+    "FROM project_memberships pm LEFT JOIN users u ON u.github_id = pm.github_id " +
+    "WHERE pm.project_id = ? " +
+    "ORDER BY CASE WHEN pm.status = 'active' THEN 0 ELSE 1 END, LOWER(COALESCE(u.login, ''))"
+  ).bind(project.project_id).all();
+
+  return results || [];
+}
+
 export async function grantMembership(db, actor, login, role = "member") {
   if (!db) throw new Error("CONTROL_DB binding is not configured.");
   if (!actor || actor.role !== "admin") throw new Error("Admin access required.");
 
-  const normalizedRole = ROLE_VALUES.includes(role) ? role : "member";
+  const normalizedRole = PLATFORM_ROLE_VALUES.includes(role) ? role : "member";
   const target = String(login || "").trim();
 
   if (!target) throw new Error("GitHub login is required.");
@@ -110,12 +162,106 @@ export async function revokeMembership(db, actor, githubId) {
   await db.prepare(
     "UPDATE memberships SET status = 'revoked', updated_at = ? WHERE github_id = ?"
   ).bind(now, targetId).run();
+
+  await db.prepare(
+    "UPDATE project_memberships SET status = 'revoked', updated_at = ? WHERE github_id = ?"
+  ).bind(now, targetId).run();
+}
+
+export async function grantProjectMembership(db, actor, repoFullName, login) {
+  if (!db) throw new Error("CONTROL_DB binding is not configured.");
+  if (!actor || actor.role !== "admin") throw new Error("Admin access required.");
+
+  const project = await getProject(db, repoFullName);
+  if (!project) throw new Error("Project not found.");
+
+  const target = String(login || "").trim();
+  if (!target) throw new Error("GitHub login is required.");
+
+  const user = await db.prepare(
+    "SELECT github_id, login FROM users WHERE LOWER(login) = LOWER(?)"
+  ).bind(target).first();
+
+  if (!user) {
+    throw new Error("User must sign in with GitHub once before project access can be granted.");
+  }
+
+  const platformMembership = await getMembership(db, user.github_id);
+  if (!isActiveMembership(platformMembership)) {
+    throw new Error("Grant platform access before granting project access.");
+  }
+
+  const now = new Date().toISOString();
+  await db.prepare(
+    "INSERT INTO project_memberships (project_id, github_id, status, created_at, updated_at, granted_by) VALUES (?, ?, 'active', ?, ?, ?) " +
+    "ON CONFLICT(project_id, github_id) DO UPDATE SET status = 'active', updated_at = ?, granted_by = ?"
+  ).bind(
+    project.project_id,
+    Number(user.github_id),
+    now,
+    now,
+    actor.login,
+    now,
+    actor.login
+  ).run();
+
+  return user;
+}
+
+export async function revokeProjectMembership(db, actor, repoFullName, githubId) {
+  if (!db) throw new Error("CONTROL_DB binding is not configured.");
+  if (!actor || actor.role !== "admin") throw new Error("Admin access required.");
+
+  const targetId = Number(githubId);
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    throw new Error("Valid GitHub user ID is required.");
+  }
+
+  if (targetId === Number(actor.githubId)) {
+    throw new Error("You cannot revoke your own project access.");
+  }
+
+  const project = await getProject(db, repoFullName);
+  if (!project) throw new Error("Project not found.");
+
+  const membership = await getProjectMembership(db, repoFullName, targetId);
+  if (!membership) throw new Error("Project membership not found.");
+
+  const now = new Date().toISOString();
+  await db.prepare(
+    "UPDATE project_memberships SET status = 'revoked', updated_at = ? WHERE project_id = ? AND github_id = ?"
+  ).bind(now, project.project_id, targetId).run();
 }
 
 export function isActiveMember(membership) {
+  return isActiveMembership(membership);
+}
+
+export function isActiveProjectMember(membership) {
+  return Boolean(
+    membership &&
+    membership.status === "active"
+  );
+}
+
+function isActiveMembership(membership) {
   return Boolean(
     membership &&
     membership.status === "active" &&
-    ROLE_VALUES.includes(membership.role)
+    PLATFORM_ROLE_VALUES.includes(membership.role)
   );
+}
+
+function projectIdForRepo(repoFullName) {
+  const normalized = String(repoFullName).trim().toLowerCase();
+  const slug = normalized
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-+|-+$/g, "");
+
+  return slug || PROJECT_ID;
+}
+
+function projectNameForRepo(repoFullName) {
+  const parts = String(repoFullName).split("/");
+  return parts[1] || String(repoFullName);
 }
