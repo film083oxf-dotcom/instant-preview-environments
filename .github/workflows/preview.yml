@@ -39,8 +39,8 @@ jobs:
 
           db_id=""
 
-          if info="$(npx --yes wrangler@4.136.3 d1 info "$PREVIEW_DB_NAME" 2>/dev/null)"; then
-            db_id="$(printf '%s' "$info" | grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -n 1 || true)"
+          if info="$(npx --yes wrangler@4.136.3 d1 info "$PREVIEW_DB_NAME" --json 2>/dev/null)"; then
+            db_id="$(printf '%s' "$info" | node -e 'let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{try{const x=JSON.parse(s); process.stdout.write(x.uuid || "")}catch{}})')"
           fi
 
           if [ -z "$db_id" ]; then
