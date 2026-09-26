@@ -16,6 +16,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
       CONTROL_DB_NAME: instant-preview-control-plane
+      PROJECT_ID: instant-preview-environments
 
     steps:
       - name: Checkout default branch config
@@ -48,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT commit_sha, database_name FROM environments WHERE pr_number = ${PR_NUMBER} LIMIT 1;")"
+          result="$(npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command "SELECT commit_sha, database_name FROM project_environments WHERE project_id = 'instant-preview-environments' AND pr_number = ${PR_NUMBER} LIMIT 1;")"
           row="$(printf '%s' "$result" | jq -c '[.[]?.results? // [] | .[]] | .[0] // empty')"
 
           db_name="$(jq -r '.database_name // empty' <<<"$row")"
@@ -63,7 +64,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PR_NUMBER" DELETING "${{ steps.ids.outputs.head_sha }}" "" "${{ steps.ids.outputs.database_name }}" ""
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" "$PR_NUMBER" DELETING "${{ steps.ids.outputs.head_sha }}" "" "${{ steps.ids.outputs.database_name }}" ""
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
       - name: Delete Preview and isolated D1
@@ -109,7 +110,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PR_NUMBER" DELETED "${{ steps.ids.outputs.head_sha }}" "" "${{ steps.ids.outputs.database_name }}" ""
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" "$PR_NUMBER" DELETED "${{ steps.ids.outputs.head_sha }}" "" "${{ steps.ids.outputs.database_name }}" ""
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
 
       - name: Mark environment DELETE FAILED
@@ -119,5 +120,5 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set +e
-          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PR_NUMBER" "DELETE FAILED" "${{ steps.ids.outputs.head_sha }}" "" "${{ steps.ids.outputs.database_name }}" "Cleanup workflow failed."
+          node scripts/write-control-state.mjs /tmp/control-state.sql environment "$PROJECT_ID" "$PR_NUMBER" "DELETE FAILED" "${{ steps.ids.outputs.head_sha }}" "" "${{ steps.ids.outputs.database_name }}" "Cleanup workflow failed."
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
