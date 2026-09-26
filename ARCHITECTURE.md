@@ -54,3 +54,8 @@ The database is reused across pushes to the same PR and deleted during cleanup.
 ## Dashboard
 
 The dashboard Worker reads only the central D1 control plane. It does not call the GitHub API at runtime, avoiding GitHub API rate-limit dependency.
+
+
+## Garbage collection
+
+The Preview Garbage Collector runs every 30 minutes and can also be invoked manually. It queries the control-plane D1 for stale lifecycle records, checks PR state through GitHub, and directly reclaims eligible Cloudflare Preview + D1 resources. Open PRs are preserved unless an operator explicitly enables deletion of stale open environments.
