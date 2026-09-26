@@ -1,6 +1,9 @@
 name: Preview Garbage Collector
 
 on:
+  push:
+    branches:
+      - test/live-ttl-gc
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
@@ -35,9 +38,9 @@ jobs:
 
     env:
       CONTROL_DB_NAME: instant-preview-control-plane
-      GC_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ttl_hours || '24' }}
-      GC_FAILED_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.failed_ttl_hours || '6' }}
-      GC_DELETE_STALE_OPEN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.delete_stale_open || 'false' }}
+      GC_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ttl_hours || github.event_name == 'push' && '0' || '24' }}
+      GC_FAILED_TTL_HOURS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.failed_ttl_hours || github.event_name == 'push' && '0' || '6' }}
+      GC_DELETE_STALE_OPEN: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.delete_stale_open || github.event_name == 'push' && 'true' || 'false' }}
 
     steps:
       - name: Checkout default branch config
@@ -60,6 +63,27 @@ jobs:
           set -euo pipefail
           node scripts/ensure-control-d1.mjs
           npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=./control-plane.sql
+
+      - name: Seed live PR #5 as stale
+        if: github.event_name == 'push'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          echo "Temporarily aging only PR #5 so this push can validate live TTL deletion."
+          query="UPDATE environments
+            SET updated_at = datetime('now','-48 hours'),
+                status = 'READY',
+                last_error = ''
+            WHERE pr_number = 5;"
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --command="$query"
+
+          verify="SELECT pr_number, status, commit_sha, preview_url, database_name, updated_at
+            FROM environments
+            WHERE pr_number = 5
+            LIMIT 1;"
+          npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --json --command="$verify"
 
       - name: Find stale environments
         id: stale
@@ -155,7 +179,7 @@ jobs:
 
             if [ "$cleanup_failed" = "true" ]; then
               echo "GC cleanup failed for PR #$pr."
-              node scripts/write-control-state.mjs /tmp/control-state.sql environment "$pr" "DELETE FAILED" "$commit_sha" "" "$database_name" "Garbage collector cleanup failed."
+              node scripts/write-control-state.mjs /tmp/control-state.sql environment "DELETE FAILED" "$commit_sha" "" "$database_name" "Garbage collector cleanup failed."
               npx --yes wrangler@4.136.3 d1 execute "$CONTROL_DB_NAME" --remote --yes --file=/tmp/control-state.sql
               continue
             fi
