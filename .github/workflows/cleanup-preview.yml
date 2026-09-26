@@ -87,29 +87,18 @@ jobs:
           set +e
 
           echo "=== Delete Preview: $PREVIEW_NAME ==="
-          preview_output=$(npx --yes wrangler@4.136.3 preview delete --name "$PREVIEW_NAME" --skip-confirmation 2>&1)
-          preview_status=$?
+          preview_output="$(node scripts/provider-cli.mjs delete-preview --name "$PREVIEW_NAME")"
           printf '%s\n' "$preview_output"
 
-          if [ "$preview_status" -ne 0 ] && ! grep -Fq "Preview not found. [code: 10025]" <<< "$preview_output"; then
-            echo "Preview deletion failed."
-            exit "$preview_status"
-          fi
+          preview_not_found="$(printf '%s' "$preview_output" | jq -r '.notFound // false')"
+          test "$preview_not_found" = "false" || echo "Preview $PREVIEW_NAME was already absent."
 
           echo "=== Delete isolated D1: $PREVIEW_DB_NAME ==="
-          db_output=$(npx --yes wrangler@4.136.3 d1 delete "$PREVIEW_DB_NAME" --skip-confirmation 2>&1)
-          db_status=$?
+          db_output="$(node scripts/provider-cli.mjs delete-db --name "$PREVIEW_DB_NAME")"
           printf '%s\n' "$db_output"
 
-          if [ "$db_status" -ne 0 ]; then
-            if grep -Eiq "not found|does not exist|No database|could not find|Couldn't find a D1 DB|Couldn't find.*D1" <<< "$db_output"; then
-              echo "D1 $PREVIEW_DB_NAME does not exist. Nothing to delete."
-              exit 0
-            fi
-
-            echo "D1 deletion failed."
-            exit "$db_status"
-          fi
+          db_not_found="$(printf '%s' "$db_output" | jq -r '.notFound // false')"
+          test "$db_not_found" = "false" || echo "D1 $PREVIEW_DB_NAME was already absent."
 
           echo "Cleanup completed for $PREVIEW_NAME and $PREVIEW_DB_NAME."
 
