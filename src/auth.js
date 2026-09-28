@@ -97,7 +97,7 @@ export async function handleAuthCallback(request, env) {
     cookieStateData.state === state
       ? {
           verifier: cookieStateData.verifier,
-          return_url: cookieStateData.returnTo
+          returnUrl: cookieStateData.returnTo
         }
       : null
   );
@@ -450,7 +450,12 @@ async function consumeOAuthState(db, state) {
     "UPDATE oauth_states SET used_at = ? WHERE state_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING verifier, return_url"
   ).bind(now, stateHash, now).first();
 
-  return result || null;
+  return result
+    ? {
+        verifier: result.verifier,
+        returnUrl: result.return_url
+      }
+    : null;
 }
 
 async function upsertUser(db, user) {
