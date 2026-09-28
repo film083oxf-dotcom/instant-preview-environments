@@ -37,6 +37,13 @@ export async function handleAuthLogin(request, env) {
     exp: Math.floor(Date.now() / 1000) + STATE_TTL_SECONDS
   };
 
+  await createOAuthState(env.CONTROL_DB, {
+    state,
+    verifier,
+    returnUrl: returnTo,
+    expiresAt: statePayload.exp
+  });
+
   const signedState = await signObject(statePayload, env.SESSION_SIGNING_KEY);
   const authorize = new URL("https://github.com/login/oauth/authorize");
   authorize.searchParams.set("client_id", env.GITHUB_CLIENT_ID);
@@ -83,9 +90,19 @@ export async function handleAuthCallback(request, env) {
   }
 
   const rawState = getCookie(request.headers.get("Cookie"), OAUTH_STATE_COOKIE);
-  const stateData = await verifyObject(rawState, env.SESSION_SIGNING_KEY);
+  const cookieStateData = await verifyObject(rawState, env.SESSION_SIGNING_KEY);
+  const stateData = await consumeOAuthState(env.CONTROL_DB, state) || (
+    cookieStateData &&
+    cookieStateData.exp >= Math.floor(Date.now() / 1000) &&
+    cookieStateData.state === state
+      ? {
+          verifier: cookieStateData.verifier,
+          return_url: cookieStateData.returnTo
+        }
+      : null
+  );
 
-  if (!stateData || stateData.exp < Math.floor(Date.now() / 1000) || stateData.state !== state) {
+  if (!stateData) {
     return new Response("Invalid or expired OAuth state.", {
       status: 400,
       headers: noStoreHeaders()
@@ -405,6 +422,35 @@ async function createSession(user, signingKey) {
     },
     signingKey
   );
+}
+
+async function createOAuthState(db, data) {
+  const now = new Date().toISOString();
+  const expiresAt = new Date(data.expiresAt * 1000).toISOString();
+  const stateHash = await sha256Hex(data.state);
+
+  await db.prepare(
+    "INSERT INTO oauth_states (state_hash, verifier, return_url, expires_at, created_at) VALUES (?, ?, ?, ?, ?)"
+  ).bind(
+    stateHash,
+    String(data.verifier),
+    String(data.returnUrl),
+    expiresAt,
+    now
+  ).run();
+}
+
+async function consumeOAuthState(db, state) {
+  if (!db || !state) return null;
+
+  const stateHash = await sha256Hex(state);
+  const now = new Date().toISOString();
+
+  const result = await db.prepare(
+    "UPDATE oauth_states SET used_at = ? WHERE state_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING verifier, return_url"
+  ).bind(now, stateHash, now).first();
+
+  return result || null;
 }
 
 async function upsertUser(db, user) {
