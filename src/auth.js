@@ -155,7 +155,7 @@ export async function handleAuthCallback(request, env) {
   await upsertUser(env.CONTROL_DB, githubUser);
 
   const productionOrigin = new URL(env.AUTH_BASE_URL).origin;
-  const target = new URL(stateData.returnTo);
+  const target = new URL(stateData.returnUrl);
   const isProduction = target.origin === productionOrigin;
 
   if (isProduction) {
