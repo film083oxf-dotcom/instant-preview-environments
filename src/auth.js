@@ -54,24 +54,22 @@ export async function handleAuthLogin(request, env) {
   authorize.searchParams.set("code_challenge", challenge);
   authorize.searchParams.set("code_challenge_method", "S256");
 
-  return new Response(null, {
+  const response = new Response(null, {
     status: 302,
     headers: {
       Location: authorize.toString(),
-      "Set-Cookie": serializeCookie(
-        OAUTH_STATE_COOKIE,
-        signedState,
-        STATE_TTL_SECONDS,
-        true
-      ) + "\n" + serializeCookie(
-        OAUTH_BINDING_COOKIE,
-        bindingHash,
-        STATE_TTL_SECONDS,
-        true
-      ),
       "Cache-Control": "no-store"
     }
   });
+  response.headers.append(
+    "Set-Cookie",
+    serializeCookie(OAUTH_STATE_COOKIE, signedState, STATE_TTL_SECONDS, true)
+  );
+  response.headers.append(
+    "Set-Cookie",
+    serializeCookie(OAUTH_BINDING_COOKIE, bindingHash, STATE_TTL_SECONDS, true)
+  );
+  return response;
 }
 
 export async function handleAuthCallback(request, env) {
@@ -105,7 +103,7 @@ export async function handleAuthCallback(request, env) {
   if (!rawBinding || !constantTimeEqual(rawBinding, expectedBinding)) {
     return new Response("Invalid OAuth browser binding. Please restart sign-in.", {
       status: 400,
-      headers: noStoreHeadersWithCookies()
+      headers: noStoreHeaders()
     });
   }
 
@@ -205,6 +203,10 @@ export async function handleAuthCallback(request, env) {
       "Set-Cookie",
       serializeCookie(OAUTH_STATE_COOKIE, "", 0, true)
     );
+    response.headers.append(
+      "Set-Cookie",
+      serializeCookie(OAUTH_BINDING_COOKIE, "", 0, true)
+    );
 
     return response;
   }
@@ -219,22 +221,22 @@ export async function handleAuthCallback(request, env) {
   const exchangeUrl = new URL("/auth/exchange", target.origin);
   exchangeUrl.searchParams.set("ticket", ticket);
 
-  return new Response(null, {
+  const response = new Response(null, {
     status: 302,
     headers: {
       Location: exchangeUrl.toString(),
-      "Set-Cookie": serializeCookie(OAUTH_STATE_COOKIE, "", 0, true),
       "Cache-Control": "no-store"
     }
   });
-
+  response.headers.append(
+    "Set-Cookie",
+    serializeCookie(OAUTH_STATE_COOKIE, "", 0, true)
+  );
   response.headers.append(
     "Set-Cookie",
     serializeCookie(OAUTH_BINDING_COOKIE, "", 0, true)
   );
-
-  return response
-  });
+  return response;
 }
 
 export async function handleAuthExchange(request, env) {
@@ -718,12 +720,5 @@ function noStoreHeaders() {
   return {
     "Cache-Control": "no-store",
     "X-Robots-Tag": "noindex"
-  };
-}
-
-function noStoreHeadersWithCookies() {
-  return {
-    ...noStoreHeaders(),
-    "Set-Cookie": serializeCookie(OAUTH_STATE_COOKIE, "", 0, true) + "\n" + serializeCookie(OAUTH_BINDING_COOKIE, "", 0, true)
   };
 }
